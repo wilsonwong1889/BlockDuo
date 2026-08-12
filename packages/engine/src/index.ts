@@ -6,3 +6,4 @@ export * from './scoring.js';
 export * from './deal.js';
 export * from './game.js';
 export * from './serde.js';
+export * from './protocol.js';

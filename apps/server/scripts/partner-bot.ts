@@ -9,6 +9,7 @@
  * and doubles as a check that rejection actually rejects.
  *
  *   node scripts/partner-bot.ts <ROOMCODE> [moves]
+ *   BLOKDUO_ORIGIN=https://blokduo.example.workers.dev node scripts/partner-bot.ts <ROOMCODE>
  */
 
 const [, , codeArg, movesArg] = process.argv;
@@ -18,10 +19,9 @@ if (!codeArg) {
 }
 const code = codeArg.toUpperCase();
 const maxMoves = Number(movesArg ?? 3);
+const origin = (process.env.BLOKDUO_ORIGIN ?? 'http://localhost:8787').replace(/^http/, 'ws');
 
-const socket = new WebSocket(
-  `ws://localhost:8787/api/room/${code}/ws?clientId=partner-bot&name=Robin`,
-);
+const socket = new WebSocket(`${origin}/api/room/${code}/ws?clientId=partner-bot&name=Robin`);
 
 let seat: number | null = null;
 let played = 0;

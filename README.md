@@ -1,5 +1,7 @@
 # BLOKDUO
 
+**Live: https://blokduo.wilsonwong1889.workers.dev**
+
 An 8×8 block puzzle you can play solo, or two-up on one shared board, live.
 
 Classic mode is the familiar game: three pieces at a time, no rotation, fill a
@@ -106,15 +108,27 @@ is enough to find a game with nothing to look up anywhere else.
 
 ## Deploying
 
-The Worker:
+The site and the room server are **one Worker**. Build the web app first, since
+the Worker uploads `apps/web/dist` as its static assets:
 
 ```bash
-npm run deploy --workspace=@blokduo/server
+npm run build && npm run deploy --workspace=@blokduo/server
 ```
 
-The web app builds to `apps/web/dist` and can go on any static host. Route the
-Worker at `/api/*` on the same origin and the client needs no configuration; put
-it elsewhere and set `VITE_SERVER_URL` at build time.
+Assets are matched first; anything unmatched (`/api/*`) reaches the Worker. No
+SPA fallback is configured because routing is done with the hash, so every
+request path is just `/`. One origin means the web client needs no
+configuration to find the room server.
+
+Duo runs on the **Workers Free plan** — Durable Objects are included there, but
+only SQLite-backed ones, which is what `new_sqlite_classes` in
+[`wrangler.jsonc`](apps/server/wrangler.jsonc) selects.
+
+To play a live duo game against a stand-in partner:
+
+```bash
+BLOKDUO_ORIGIN=https://blokduo.wilsonwong1889.workers.dev node apps/server/scripts/partner-bot.ts ROOMCODE
+```
 
 ## The app
 

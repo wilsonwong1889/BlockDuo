@@ -1,6 +1,8 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "blokduo-server",
+  // Serves the whole game — site and rooms — so it is named for the game, not
+  // for the half of it that started here.
+  "name": "blokduo",
   "main": "src/worker.ts",
   // Pinned to what the installed workerd actually supports, so local dev and
   // tests run on the same runtime semantics as production rather than silently

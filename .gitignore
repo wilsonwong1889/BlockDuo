@@ -8,3 +8,8 @@ apps/mobile/ios/App/App/public/
 apps/mobile/android/app/src/main/assets/public/
 .env
 .env.local
+
+# Capacitor build output copied from apps/web/dist
+apps/mobile/ios/App/Pods/
+apps/mobile/android/.gradle/
+apps/mobile/android/local.properties

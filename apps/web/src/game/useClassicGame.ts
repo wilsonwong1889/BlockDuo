@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { applyMove, newGame, type GameEvent, type GameState, type Move } from '@blokduo/engine';
 import * as sfx from '../audio/sfx';
 import { loadBest, loadGame, saveBest, saveGame } from '../storage';
+import { haptic } from '../native';
 import { buildClearFx, fxId, type ClearFx, type FloatFx } from './fx';
 
 export type { ClearFx, FloatFx };
@@ -107,6 +108,7 @@ function handleEvents(
     switch (event.type) {
       case 'placed': {
         sfx.playPlace();
+        void haptic('place');
         break;
       }
       case 'cleared': {
@@ -141,6 +143,7 @@ function handleEvents(
       }
       case 'streak': {
         sfx.playClear(clearedLines || 1, event.streak - 1);
+        void haptic(clearedLines > 1 ? 'combo' : 'clear');
         break;
       }
       case 'perfect': {

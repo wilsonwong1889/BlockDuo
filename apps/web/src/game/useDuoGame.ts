@@ -10,6 +10,7 @@ import {
   type ServerMessage,
 } from '@blokduo/engine';
 import * as sfx from '../audio/sfx';
+import { haptic } from '../native';
 import { roomSocketUrl } from '../net/config';
 import { buildClearFx, fxId, type ClearFx, type FloatFx } from './fx';
 
@@ -101,12 +102,18 @@ export function useDuoGame(code: string, clientId: string, name: string): DuoGam
     (before: GameState, events: GameEvent[], move: Move) => {
       let lines = 0;
       for (const event of events) {
-        if (event.type === 'placed') sfx.playPlace();
+        if (event.type === 'placed') {
+          sfx.playPlace();
+          void haptic('place');
+        }
         if (event.type === 'cleared') {
           lines = event.rows.length + event.cols.length;
           runClearFx(before, move, event.cellIndices, lines, event.points);
         }
-        if (event.type === 'streak') sfx.playClear(lines || 1, event.streak - 1);
+        if (event.type === 'streak') {
+          sfx.playClear(lines || 1, event.streak - 1);
+          void haptic(lines > 1 ? 'combo' : 'clear');
+        }
         if (event.type === 'perfect') {
           sfx.playPerfect();
           const id = fxId();

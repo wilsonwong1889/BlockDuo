@@ -10,6 +10,20 @@
   "observability": {
     "enabled": true
   },
+
+  // The site and the room server ship as one Worker, on one origin.
+  //
+  // Assets are matched first and anything unmatched reaches the Worker, which
+  // is exactly the split needed here: `/`, `/assets/*` and the icons are files,
+  // `/api/*` is not. No SPA fallback is required because routing is done with
+  // the hash (#/duo/CODE), so every request path is just `/`.
+  //
+  // Same origin also means the web client needs no configuration to find the
+  // room server — only the native build, which is served from a bundle and has
+  // no origin to be relative to, needs VITE_SERVER_URL.
+  "assets": {
+    "directory": "../web/dist"
+  },
   "durable_objects": {
     "bindings": [
       {

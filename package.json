@@ -1,0 +1,19 @@
+{
+  "name": "blokduo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "BLOKDUO — an 8x8 block puzzle game with a live two-player co-op mode",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "npm run test --workspace=@blokduo/engine",
+    "dev": "npm run dev --workspace=@blokduo/web",
+    "build": "npm run build --workspace=@blokduo/web",
+    "dev:server": "npm run dev --workspace=@blokduo/server"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.wrangler/
+.DS_Store
+*.log
+coverage/
+apps/mobile/ios/App/App/public/
+apps/mobile/android/app/src/main/assets/public/
+.env
+.env.local

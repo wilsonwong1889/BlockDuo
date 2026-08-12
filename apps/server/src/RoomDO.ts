@@ -25,6 +25,12 @@ export interface Env {
 
 interface SeatState extends PlayerView {
   clientId: string;
+  /**
+   * Which connection currently owns this seat. A reconnect can open its new
+   * socket before the old one's close is delivered, so a close is only allowed
+   * to mark the seat away if it came from the socket still holding it.
+   */
+  connId: number;
   /** When this seat's connection dropped, or null while connected. */
   droppedAt: number | null;
   consecutiveTimeouts: number;
@@ -41,11 +47,13 @@ interface Room {
   pausedAt: number | null;
   lastActivity: number;
   version: number;
+  nextConnId: number;
 }
 
 interface Attachment {
   seat: Seat;
   clientId: string;
+  connId: number;
 }
 
 /**
@@ -99,6 +107,7 @@ export class RoomDO extends DurableObject<Env> {
       pausedAt: null,
       lastActivity: Date.now(),
       version: 0,
+      nextConnId: 1,
     });
     return true;
   }
@@ -131,6 +140,9 @@ export class RoomDO extends DurableObject<Env> {
     const seat = this.assignSeat(room, clientId, name);
     if (seat === null) return new Response('Room is full', { status: 409 });
 
+    const connId = room.nextConnId++;
+    room.seats[seat]!.connId = connId;
+
     // A reconnect from the same client replaces its old socket rather than
     // leaving a ghost that would receive broadcasts nobody reads.
     for (const ws of this.ctx.getWebSockets()) {
@@ -141,7 +153,7 @@ export class RoomDO extends DurableObject<Env> {
     const pair = new WebSocketPair();
     const server = pair[1];
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ seat, clientId } satisfies Attachment);
+    server.serializeAttachment({ seat, clientId, connId } satisfies Attachment);
 
     await this.save(room);
     this.send(server, { t: 'welcome', seat, snapshot: this.snapshot(room) });
@@ -170,6 +182,7 @@ export class RoomDO extends DurableObject<Env> {
 
     room.seats[free] = {
       clientId,
+      connId: 0,
       name,
       connected: true,
       ready: false,
@@ -322,6 +335,9 @@ export class RoomDO extends DurableObject<Env> {
 
     const seat = room.seats[att.seat];
     if (!seat || seat.clientId !== att.clientId) return;
+    // A newer connection already took this seat over — this close belongs to a
+    // socket that has been superseded, so it says nothing about who is present.
+    if (seat.connId !== att.connId) return;
 
     seat.connected = false;
     seat.droppedAt = Date.now();

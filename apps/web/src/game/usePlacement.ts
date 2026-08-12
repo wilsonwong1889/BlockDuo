@@ -28,11 +28,19 @@ export interface Geometry {
   rect: DOMRect | null;
 }
 
-export function useGeometry(ref: React.RefObject<HTMLElement>): Geometry {
+/**
+ * Measure the board.
+ *
+ * The element is tracked in state via a callback ref rather than read from a
+ * ref object: duo only mounts the board once the room state arrives, and an
+ * effect that reads `ref.current` on mount would find nothing and never run
+ * again — leaving dragging with no coordinate space to aim in.
+ */
+export function useGeometry(): { geom: Geometry; boardRef: (el: HTMLDivElement | null) => void } {
+  const [el, setEl] = useState<HTMLElement | null>(null);
   const [geom, setGeom] = useState<Geometry>({ stride: 0, cell: 0, gap: 0, rect: null });
 
   useEffect(() => {
-    const el = ref.current;
     if (!el) return;
 
     const measure = () => {
@@ -47,14 +55,19 @@ export function useGeometry(ref: React.RefObject<HTMLElement>): Geometry {
     ro.observe(el);
     window.addEventListener('scroll', measure, true);
     window.addEventListener('resize', measure);
+    // A hidden tab reports a zero-sized viewport, so anything measured while
+    // backgrounded is wrong. Phones background apps constantly, so re-measure
+    // on the way back rather than trusting the resize to have fired.
+    document.addEventListener('visibilitychange', measure);
     return () => {
       ro.disconnect();
       window.removeEventListener('scroll', measure, true);
       window.removeEventListener('resize', measure);
+      document.removeEventListener('visibilitychange', measure);
     };
-  }, [ref]);
+  }, [el]);
 
-  return geom;
+  return { geom, boardRef: setEl };
 }
 
 export interface DragState {

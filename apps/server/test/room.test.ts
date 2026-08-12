@@ -155,6 +155,31 @@ describe('seating', () => {
     b.close();
   });
 
+  it('stays connected when a new socket lands before the old one closes', async () => {
+    // A quick reconnect — and React StrictMode's double-mount in development —
+    // opens the replacement socket before the old socket's close is delivered.
+    // The late close must not mark a seat away that is demonstrably present.
+    const code = await createRoom();
+    const first = await TestClient.connect(code, 'a', 'Wilson');
+    const second = await TestClient.connect(code, 'a', 'Wilson');
+    expect(second.seat).toBe(0);
+
+    await new Promise((r) => setTimeout(r, 150));
+
+    second.send({ t: 'ping' });
+    await second.waitFor('pong');
+    const status = await SELF.fetch(`${ORIGIN}/api/room/${code}`);
+    expect(await status.json()).toMatchObject({ players: 1 });
+
+    // Ask for a fresh snapshot by having a partner join, then check seat 0.
+    const b = await TestClient.connect(code, 'b', 'Partner');
+    expect(b.latestSnapshot()!.players[0]).toMatchObject({ name: 'Wilson', connected: true });
+
+    void first;
+    second.close();
+    b.close();
+  });
+
   it('gives a reconnecting player their own seat back', async () => {
     const code = await createRoom();
     const a = await TestClient.connect(code, 'a');

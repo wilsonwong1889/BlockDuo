@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect } from 'react';
 import { Board } from '../components/Board';
 import { DragLayer } from '../components/DragLayer';
 import { GameOver } from '../components/GameOver';
@@ -12,8 +12,7 @@ interface Props {
 }
 
 export function ClassicScreen({ onHome }: Props) {
-  const boardRef = useRef<HTMLDivElement>(null);
-  const geom = useGeometry(boardRef);
+  const { geom, boardRef } = useGeometry();
   const game = useClassicGame();
 
   const placement = usePlacement(

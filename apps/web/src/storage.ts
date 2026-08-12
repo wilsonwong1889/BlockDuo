@@ -11,6 +11,7 @@ const KEYS = {
   muted: 'blokduo.muted',
   saved: 'blokduo.saved.v1',
   name: 'blokduo.name',
+  clientId: 'blokduo.clientId',
 } as const;
 
 function read<T>(key: string, fallback: T): T {
@@ -38,6 +39,22 @@ export const saveMuted = (muted: boolean) => write(KEYS.muted, muted);
 
 export const loadName = () => read<string>(KEYS.name, '');
 export const saveName = (name: string) => write(KEYS.name, name);
+
+/**
+ * A stable per-device id. The server uses it to hand a reconnecting player back
+ * their own seat, so a dropped connection returns to the same game instead of
+ * being treated as a stranger asking to join.
+ */
+export function loadClientId(): string {
+  const existing = read<string>(KEYS.clientId, '');
+  if (existing) return existing;
+  const fresh =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `c${Date.now()}${Math.random().toString(36).slice(2)}`;
+  write(KEYS.clientId, fresh);
+  return fresh;
+}
 
 /** Persist the in-progress classic game so a refresh or a backgrounded tab does not lose it. */
 export function saveGame(state: GameState | null) {

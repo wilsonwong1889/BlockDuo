@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { ClassicScreen } from './screens/ClassicScreen';
+import { DuoLobby } from './screens/DuoLobby';
+import { DuoScreen } from './screens/DuoScreen';
 import { HomeScreen } from './screens/HomeScreen';
+import { loadClientId, loadName } from './storage';
 
 export type Route = { name: 'home' } | { name: 'classic' } | { name: 'duo'; code?: string };
 
@@ -36,14 +39,18 @@ export function App() {
     case 'classic':
       return <ClassicScreen onHome={() => go('/')} />;
     case 'duo':
-      return (
-        <div className="screen home">
-          <h1 className="home-title">Duo</h1>
-          <p className="home-tagline">Two players, one board. Wiring up next.</p>
-          <button className="btn" onClick={() => go('/')}>
-            Home
-          </button>
-        </div>
+      // A code in the URL means the player followed an invite, so skip the
+      // lobby and take them straight into the room.
+      return route.code ? (
+        <DuoScreen
+          key={route.code}
+          code={route.code}
+          clientId={loadClientId()}
+          name={loadName() || 'Player'}
+          onHome={() => go('/')}
+        />
+      ) : (
+        <DuoLobby onEnter={(code) => go(`/duo/${code}`)} onHome={() => go('/')} />
       );
     default:
       return <HomeScreen onClassic={() => go('/classic')} onDuo={() => go('/duo')} />;

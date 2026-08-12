@@ -693,6 +693,218 @@ button {
   line-height: 1.65;
 }
 
+/* -------------------------------------------------------------- duo lobby */
+
+.lobby {
+  justify-content: flex-start;
+  gap: 0.85rem;
+  text-align: center;
+}
+
+.lobby-title {
+  margin: 0.5rem 0 0;
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.lobby-sub {
+  margin: 0;
+  max-width: 24rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  width: min(20rem, 100%);
+  text-align: left;
+}
+
+.field span {
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.field input,
+.code-input {
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--slot-edge);
+  border-radius: 12px;
+  background: var(--slot);
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+}
+
+.field input:focus,
+.code-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.code-input {
+  flex: 1;
+  min-width: 0;
+  letter-spacing: 0.3em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: min(20rem, 100%);
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.join-row {
+  display: flex;
+  gap: 0.5rem;
+  width: min(20rem, 100%);
+}
+
+.error {
+  margin: 0;
+  color: #fda4af;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------------- duo game */
+
+.duo {
+  gap: 0.55rem;
+}
+
+.room-code {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.35rem 0.9rem;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  font-weight: 800;
+  letter-spacing: 0.22em;
+}
+
+.room-code-hint {
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.big-code {
+  margin: 0.5rem 0;
+  font-size: 2.6rem;
+  font-weight: 900;
+  letter-spacing: 0.3em;
+  text-indent: 0.3em;
+  color: var(--accent);
+}
+
+.players {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  width: min(100%, 30rem);
+}
+
+.player {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+/* Whose turn it is has to be readable at a glance, from across a table. */
+.player.active {
+  border-color: var(--accent);
+  background: rgba(110, 231, 255, 0.1);
+  box-shadow: 0 0 18px rgba(110, 231, 255, 0.15);
+}
+
+.player.away {
+  opacity: 0.5;
+}
+
+.player-name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-stat {
+  font-size: 0.65rem;
+  color: var(--muted);
+}
+
+.turn-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  width: min(100%, 30rem);
+  min-height: 2rem;
+  padding: 0.3rem 0.8rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.turn-banner.mine {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.25), rgba(99, 102, 241, 0.25));
+  color: var(--text);
+}
+
+.turn-timer {
+  position: relative;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.25);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+}
+
+.turn-timer-bar {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  background: rgba(110, 231, 255, 0.25);
+  transition: transform 0.25s linear;
+}
+
+.turn-timer.urgent {
+  color: #fecdd3;
+  animation: pulse 0.9s ease-in-out infinite;
+}
+
 /* --------------------------------------------------------------- a11y/mo. */
 
 @media (prefers-reduced-motion: reduce) {

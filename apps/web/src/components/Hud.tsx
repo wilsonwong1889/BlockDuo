@@ -8,24 +8,45 @@ import { useEffect, useRef, useState } from 'react';
  */
 function useCountUp(target: number, ms = 420) {
   const [shown, setShown] = useState(target);
-  const from = useRef(target);
+  // The displayed value is mirrored in a ref so the animation frame never reads
+  // it through a stale closure, and so a new target picked up mid-tween starts
+  // from wherever the number actually is rather than from where it began.
+  const shownRef = useRef(target);
+  const targetRef = useRef(target);
   const raf = useRef(0);
 
+  targetRef.current = target;
+
   useEffect(() => {
-    if (shown === target) return;
+    if (shownRef.current === target) return;
+
+    const from = shownRef.current;
     const start = performance.now();
-    from.current = shown;
-    const step = (now: number) => {
-      const t = Math.min(1, (now - start) / ms);
-      // Ease-out: fast at first, so the number reads as reacting immediately.
-      const eased = 1 - Math.pow(1 - t, 3);
-      setShown(Math.round(from.current + (target - from.current) * eased));
-      if (t < 1) raf.current = requestAnimationFrame(step);
+
+    const apply = (value: number) => {
+      shownRef.current = value;
+      setShown(value);
     };
+
+    const step = (now: number) => {
+      // Clamped at both ends: the first frame's timestamp can predate `start`,
+      // and a backgrounded tab resumes with a huge one.
+      const t = Math.min(1, Math.max(0, (now - start) / ms));
+      // Ease-out, so the number reads as reacting immediately.
+      const eased = 1 - Math.pow(1 - t, 3);
+      apply(Math.round(from + (targetRef.current - from) * eased));
+
+      if (t < 1) {
+        raf.current = requestAnimationFrame(step);
+      } else {
+        // Always finish exactly on the target; rounding mid-tween must never
+        // leave the score reading something other than the real score.
+        apply(targetRef.current);
+      }
+    };
+
     raf.current = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf.current);
-    // `shown` deliberately omitted: including it restarts the tween every frame.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target, ms]);
 
   return shown;

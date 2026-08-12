@@ -1,29 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  applyMove,
-  getPiece,
-  newGame,
-  type GameEvent,
-  type GameState,
-  type Move,
-} from '@blokduo/engine';
+import { applyMove, newGame, type GameEvent, type GameState, type Move } from '@blokduo/engine';
 import * as sfx from '../audio/sfx';
 import { loadBest, loadGame, saveBest, saveGame } from '../storage';
+import { buildClearFx, fxId, type ClearFx, type FloatFx } from './fx';
 
-export interface ClearFx {
-  id: number;
-  /** Board indices being cleared, with the colour they had before clearing. */
-  cells: Array<{ index: number; color: number }>;
-  lines: number;
-}
-
-export interface FloatFx {
-  id: number;
-  row: number;
-  col: number;
-  text: string;
-  kind: 'score' | 'combo' | 'perfect';
-}
+export type { ClearFx, FloatFx };
 
 export interface ClassicGame {
   state: GameState;
@@ -35,8 +16,6 @@ export interface ClassicGame {
   restart: () => void;
   reject: () => void;
 }
-
-let fxId = 0;
 
 export function useClassicGame(): ClassicGame {
   const [state, setState] = useState<GameState>(() => loadGame() ?? newGame());
@@ -132,21 +111,18 @@ function handleEvents(
       }
       case 'cleared': {
         clearedLines = event.rows.length + event.cols.length;
-        const id = ++fxId;
-        setClearFx((fx) => [
-          ...fx,
-          {
-            id,
-            lines: clearedLines,
-            cells: event.cellIndices.map((index) => ({
-              index,
-              color: before.board[index] || pieceColorAt(before, move, index) || 1,
-            })),
-          },
-        ]);
-        schedule(() => setClearFx((fx) => fx.filter((f) => f.id !== id)), 520);
+        const fx = buildClearFx(
+          before.board,
+          before.hand[move.slot],
+          move,
+          event.cellIndices,
+          clearedLines,
+        );
+        const id = fx.id;
+        setClearFx((list) => [...list, fx]);
+        schedule(() => setClearFx((list) => list.filter((f) => f.id !== id)), 520);
 
-        const floatId = ++fxId;
+        const floatId = fxId();
         setFloats((f) => [
           ...f,
           {
@@ -169,7 +145,7 @@ function handleEvents(
       }
       case 'perfect': {
         sfx.playPerfect();
-        const id = ++fxId;
+        const id = fxId();
         setFloats((f) => [...f, { id, row: 3, col: 2, text: 'PERFECT!', kind: 'perfect' }]);
         schedule(() => setFloats((f) => f.filter((x) => x.id !== id)), 1400);
         break;
@@ -182,18 +158,4 @@ function handleEvents(
         break;
     }
   }
-}
-
-/**
- * A cleared cell might be one the player just placed, in which case it is not in
- * the pre-move board. Recover its colour from the piece that was played.
- */
-function pieceColorAt(before: GameState, move: Move, index: number): number | undefined {
-  const slot = before.hand[move.slot];
-  if (!slot) return undefined;
-  const piece = getPiece(slot.pieceId);
-  const row = Math.floor(index / 8);
-  const col = index % 8;
-  const hit = piece.cells.some(([dr, dc]) => move.row + dr === row && move.col + dc === col);
-  return hit ? slot.color : undefined;
 }

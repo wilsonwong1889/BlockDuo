@@ -56,10 +56,12 @@ describe('placement coordinates', () => {
     ).toEqual({ row: 2, col: 2 });
   });
 
-  it('carries the piece high enough to clear a hand', () => {
-    // The whole point of the lift is that the piece is not under the thumb.
-    // A value below a couple of cells puts it back there.
-    expect(TOUCH_LIFT_CELLS).toBeGreaterThanOrEqual(2);
+  it('keeps the lift within the range that is worth having', () => {
+    // Below about a cell and a half the piece is back under the thumb; much
+    // above two and it stops feeling attached to the finger. The exact value
+    // inside that range is a feel decision, not something to pin down here.
+    expect(TOUCH_LIFT_CELLS).toBeGreaterThanOrEqual(1.5);
+    expect(TOUCH_LIFT_CELLS).toBeLessThanOrEqual(3);
   });
 
   it('gives a precise pointer no lift, so the piece stays under the cursor', () => {

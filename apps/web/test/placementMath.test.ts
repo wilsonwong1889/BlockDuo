@@ -56,6 +56,19 @@ describe('placement coordinates', () => {
     ).toEqual({ row: 2, col: 2 });
   });
 
+  it('carries the piece high enough to clear a hand', () => {
+    // The whole point of the lift is that the piece is not under the thumb.
+    // A value below a couple of cells puts it back there.
+    expect(TOUCH_LIFT_CELLS).toBeGreaterThanOrEqual(3);
+  });
+
+  it('gives a precise pointer no lift, so the piece stays under the cursor', () => {
+    const gesture = drag({ y: 325, touch: false });
+    expect(dragOrigin(gesture, geom)?.top).toBe(
+      dragOrigin({ ...gesture, touch: true }, geom).top + TOUCH_LIFT_CELLS * geom.stride,
+    );
+  });
+
   it('uses one origin for both the visual position and board target', () => {
     const gesture = drag({ x: 287, y: 391, grabCellX: 1.25, grabCellY: 0.25 });
     const origin = dragOrigin(gesture, geom);

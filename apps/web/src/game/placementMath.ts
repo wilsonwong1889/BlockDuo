@@ -61,8 +61,15 @@ export interface GrabOffset {
   y: number;
 }
 
-/** Keep a touch-dragged piece above the player's thumb. */
-export const TOUCH_LIFT_CELLS = 1.6;
+/**
+ * Carry a touch-dragged piece this far above the thumb.
+ *
+ * A hand covers far more than a cursor does: at less than this the piece and
+ * the cells it is about to fill sit under your own knuckles, and you place by
+ * memory. Precise pointers get no lift at all — an arrow hides nothing, and a
+ * piece floating away from the cursor reads as broken rather than helpful.
+ */
+export const TOUCH_LIFT_CELLS = 4;
 
 /** Small pointer wobble is still a tap; crossing this starts drag semantics. */
 export const DRAG_THRESHOLD_PX = 8;

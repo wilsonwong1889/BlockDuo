@@ -1,28 +1,55 @@
 import { useState } from 'react';
-import { isValidRoomCode } from '@blokduo/engine';
+import { DUO_TURN_MS, isValidRoomCode, type DuoMode } from '@blokduo/engine';
 import { unlockAudio } from '../audio/sfx';
 import { apiUrl } from '../net/config';
-import { loadName, saveName } from '../storage';
+import { loadDuoMode, loadName, saveDuoMode, saveName } from '../storage';
 
 interface Props {
   onEnter: (code: string, name: string) => void;
   onHome: () => void;
 }
 
+const MODES: Array<{ mode: DuoMode; label: string; blurb: string; note: string }> = [
+  {
+    mode: 'classic',
+    label: 'Classic Duo',
+    blurb: 'A minute a turn. Talk it over, plan the clear.',
+    note: 'Earns coins',
+  },
+  {
+    mode: 'ranked',
+    label: 'Ranked Duo',
+    blurb: 'Five seconds a turn. Trust your gut.',
+    note: 'Earns coins · counts for the leaderboards',
+  },
+];
+
+const seconds = (mode: DuoMode) => Math.round(DUO_TURN_MS[mode] / 1000);
+
 export function DuoLobby({ onEnter, onHome }: Props) {
   const [name, setName] = useState(() => loadName());
+  const [mode, setMode] = useState<DuoMode>(loadDuoMode);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState<'create' | 'join' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const displayName = name.trim() || 'Player';
 
+  const chooseMode = (next: DuoMode) => {
+    setMode(next);
+    saveDuoMode(next);
+  };
+
   const create = async () => {
     unlockAudio();
     setBusy('create');
     setError(null);
     try {
-      const res = await fetch(apiUrl('/api/room'), { method: 'POST' });
+      const res = await fetch(apiUrl('/api/room'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
       if (!res.ok) throw new Error('Could not create a room');
       const { code: fresh } = (await res.json()) as { code: string };
       saveName(displayName);
@@ -88,6 +115,32 @@ export function DuoLobby({ onEnter, onHome }: Props) {
           autoComplete="nickname"
         />
       </label>
+
+      <fieldset className="mode-picker">
+        <legend>Choose a mode</legend>
+        {MODES.map((option) => (
+          <label
+            key={option.mode}
+            className={`mode-card${mode === option.mode ? ' selected' : ''}`}
+          >
+            <input
+              type="radio"
+              name="duo-mode"
+              value={option.mode}
+              checked={mode === option.mode}
+              onChange={() => chooseMode(option.mode)}
+            />
+            <span className="mode-body">
+              <span className="mode-head">
+                <strong>{option.label}</strong>
+                <span className={`mode-clock ${option.mode}`}>{seconds(option.mode)}s</span>
+              </span>
+              <small>{option.blurb}</small>
+              <small className="mode-note">{option.note}</small>
+            </span>
+          </label>
+        ))}
+      </fieldset>
 
       <button className="btn primary big" onClick={create} disabled={busy !== null}>
         {busy === 'create' ? 'Creating…' : 'Create a room'}

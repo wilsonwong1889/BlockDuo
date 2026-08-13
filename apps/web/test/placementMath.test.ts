@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boardFromString, emptyBoard, type HandSlot } from '@blokduo/engine';
+import { DUO_TURN_MS, boardFromString, emptyBoard, type HandSlot } from '@blokduo/engine';
 import {
   DRAG_THRESHOLD_PX,
   SNAP_HYSTERESIS_CELLS,
@@ -161,5 +161,16 @@ describe('duo turn clock', () => {
       seconds: 0,
       fraction: 0,
     });
+  });
+
+  it('measures the bar against this room’s turn, not a fixed one', () => {
+    // Half a Ranked turn gone should look half gone. Measured against the old
+    // fixed 45s the bar would sit at 5% and never visibly move.
+    expect(turnTime(2_500, 0, DUO_TURN_MS.ranked).fraction).toBeCloseTo(0.5);
+    expect(turnTime(30_000, 0, DUO_TURN_MS.classic).fraction).toBeCloseTo(0.5);
+  });
+
+  it('never divides by a turn length of zero', () => {
+    expect(turnTime(5_000, 0, 0).fraction).toBe(0);
   });
 });

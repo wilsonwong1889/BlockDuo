@@ -1,6 +1,9 @@
 import {
+  DEFAULT_DUO_MODE,
   decodeState,
   encodeState,
+  isDuoMode,
+  type DuoMode,
   type GameState,
   type Move,
   type WireGameState,
@@ -28,6 +31,7 @@ const KEYS = {
   pendingClassic: 'blokduo.pendingClassic.v1',
   settings: 'blokduo.settings.v1',
   statistics: 'blokduo.statistics.v1',
+  duoMode: 'blokduo.duoMode.v1',
 } as const;
 
 export interface AppSettings {
@@ -116,6 +120,14 @@ export function saveAppSettings(settings: AppSettings) {
 
 export const loadName = () => read<string>(KEYS.name, '');
 export const saveName = (name: string) => write(KEYS.name, name);
+
+/** The lobby reopens on the mode you last created a room in. */
+export function loadDuoMode(): DuoMode {
+  const saved = read<unknown>(KEYS.duoMode, null);
+  return isDuoMode(saved) ? saved : DEFAULT_DUO_MODE;
+}
+
+export const saveDuoMode = (mode: DuoMode) => write(KEYS.duoMode, mode);
 
 /**
  * A stable per-device id. The server uses it to hand a reconnecting player back

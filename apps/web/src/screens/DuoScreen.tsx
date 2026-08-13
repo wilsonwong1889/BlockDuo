@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { DEFAULT_DUO_MODE, DUO_TURN_MS, isDuoMode, type DuoMode } from '@blokduo/engine';
 import { Board } from '../components/Board';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DragLayer } from '../components/DragLayer';
@@ -38,6 +39,8 @@ export function DuoScreen({ code, name, onHome }: Props) {
   const me = duo.seat !== null ? snapshot?.players[duo.seat] ?? null : null;
   const partnerSeat = duo.seat === 0 ? 1 : 0;
   const partner = snapshot?.players[partnerSeat] ?? null;
+  // A joiner inherits the host's choice, so the room is the authority on it.
+  const mode: DuoMode = isDuoMode(snapshot?.mode) ? snapshot.mode : DEFAULT_DUO_MODE;
 
   useEffect(() => {
     if (snapshot?.phase !== 'over' || !snapshot.result) return;
@@ -126,7 +129,9 @@ export function DuoScreen({ code, name, onHome }: Props) {
           {code}
           <span className="room-code-hint">{copied ? 'Link copied' : 'tap to share'}</span>
         </button>
-        <span className="topbar-spacer" />
+        <span className={`mode-badge ${mode}`} title={`${DUO_TURN_MS[mode] / 1000}s a turn`}>
+          {mode === 'ranked' ? 'Ranked' : 'Classic'}
+        </span>
       </header>
 
       <div className="players">
@@ -167,7 +172,7 @@ export function DuoScreen({ code, name, onHome }: Props) {
       <div className={`turn-banner${duo.myTurn ? ' mine' : ''}`} aria-live="polite">
         <span>{duo.lastEvent ?? turnLabel}</span>
         {localDeadline !== null && snapshot.phase === 'playing' && (
-          <TurnTimer deadline={localDeadline} />
+          <TurnTimer deadline={localDeadline} turnMs={DUO_TURN_MS[mode]} />
         )}
       </div>
 

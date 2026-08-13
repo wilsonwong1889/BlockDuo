@@ -1,0 +1,38 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Cloudflare Builds runs `npx wrangler deploy` from the repository root.
+  // Keep this root entry point alongside the app-scoped config used by local
+  // server development and integration tests.
+  "name": "blokduo",
+  "main": "apps/server/src/worker.ts",
+  "compatibility_date": "2024-12-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "directory": "apps/web/dist"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ROOM",
+        "class_name": "RoomDO"
+      },
+      {
+        "name": "PROGRESS",
+        "class_name": "ProgressDO"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["RoomDO"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["ProgressDO"]
+    }
+  ]
+}

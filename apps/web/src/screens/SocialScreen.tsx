@@ -4,6 +4,7 @@ import type {
   LeaderboardScope,
   LeaderboardView,
 } from '@blokduo/engine';
+import { Leaderboard } from '../components/Leaderboard';
 import { useProgress } from '../progress/ProgressContext';
 
 interface Props {
@@ -204,35 +205,33 @@ export function SocialScreen({ onHome }: Props) {
           </button>
         </div>
 
-        <div className="leaderboard-heading">
-          <div>
-            <h2>Best game this week</h2>
-            <p>{resetLabel ? `Resets ${resetLabel}` : 'Loading this week…'}</p>
-          </div>
-          {board?.selfRank && <span className="rank-pill">You #{board.selfRank}</span>}
-        </div>
+        {mode === 'duo' && (
+          <p className="board-note">Only Ranked Duo rooms are scored here.</p>
+        )}
 
-        <div className="leaderboard-list" aria-live="polite">
-          {!board && !message && <p className="empty-board">Loading scores…</p>}
-          {board && board.entries.length === 0 && (
-            <p className="empty-board">
-              {scope === 'friends'
-                ? 'No friend has finished this mode this week yet.'
-                : 'Be the first score on this week’s board.'}
-            </p>
-          )}
-          {board?.entries.map((entry) => (
-            <div className={`leader-row${entry.isYou ? ' you' : ''}`} key={`${entry.rank}-${entry.name}`}>
-              <span className="leader-rank">{entry.rank}</span>
-              <span className="leader-name">
-                {entry.name}
-                {entry.isYou && <small>You</small>}
-              </span>
-              <span className="leader-pieces">{entry.moveCount} pieces</span>
-              <strong className="leader-score">{entry.score.toLocaleString()}</strong>
-            </div>
-          ))}
-        </div>
+        <Leaderboard
+          title="All time"
+          subtitle="Every week that has ever been played"
+          board={board?.allTime ?? null}
+          loading={!board && !message}
+          emptyText={
+            scope === 'friends'
+              ? 'No friend has finished this mode yet.'
+              : 'Nobody has finished this mode yet. Go first.'
+          }
+        />
+
+        <Leaderboard
+          title="This week"
+          subtitle={resetLabel ? `Resets ${resetLabel}` : 'Loading this week…'}
+          board={board?.weekly ?? null}
+          loading={!board && !message}
+          emptyText={
+            scope === 'friends'
+              ? 'No friend has finished this mode this week yet.'
+              : 'Be the first score on this week’s board.'
+          }
+        />
       </section>
     </div>
   );

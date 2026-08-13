@@ -1298,6 +1298,202 @@ button {
   text-align: center;
 }
 
+/*
+ * The podium. A medal is a struck disc, so the gradient runs corner to corner
+ * with a light edge at the top and a dark one at the bottom — a flat fill in
+ * roughly the right hue reads as a coloured circle instead.
+ */
+.leader-rank.medal {
+  display: grid;
+  place-items: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 50%;
+  color: #2b1c05;
+  font-size: 0.72rem;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.leader-rank.gold {
+  background: linear-gradient(145deg, #ffe9a8 0%, #f5be42 45%, #d99b1c 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    inset 0 -2px 0 rgba(120, 78, 4, 0.4),
+    0 0 14px rgba(245, 190, 66, 0.35);
+}
+
+.leader-rank.silver {
+  background: linear-gradient(145deg, #f4f7ff 0%, #c3ccdf 45%, #8e99ad 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -2px 0 rgba(70, 79, 94, 0.35),
+    0 0 12px rgba(197, 208, 227, 0.25);
+}
+
+.leader-rank.bronze {
+  background: linear-gradient(145deg, #f0c39a 0%, #cd8a4e 45%, #9c5f2b 100%);
+  color: #2b1405;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    inset 0 -2px 0 rgba(94, 51, 16, 0.4),
+    0 0 12px rgba(205, 138, 78, 0.22);
+}
+
+/* A tinted rail on the row itself, so the podium reads from a glance down the list. */
+.leader-row.gold {
+  --medal-rail: #f5be42;
+  background: linear-gradient(90deg, rgba(245, 190, 66, 0.16), rgba(255, 255, 255, 0.035) 60%);
+}
+
+.leader-row.silver {
+  --medal-rail: #c5d0e3;
+  background: linear-gradient(90deg, rgba(197, 208, 227, 0.14), rgba(255, 255, 255, 0.035) 60%);
+}
+
+.leader-row.bronze {
+  --medal-rail: #cd8a4e;
+  background: linear-gradient(90deg, rgba(205, 138, 78, 0.14), rgba(255, 255, 255, 0.035) 60%);
+}
+
+.leader-row.gold,
+.leader-row.silver,
+.leader-row.bronze {
+  box-shadow: inset 2px 0 0 var(--medal-rail);
+}
+
+/*
+ * Being on the podium and being you should not fight. The rail stays the medal's
+ * own colour — currentColor here would resolve to the row's text and quietly
+ * paint every podium rail the same near-white.
+ */
+.leader-row.you.gold,
+.leader-row.you.silver,
+.leader-row.you.bronze {
+  box-shadow:
+    inset 2px 0 0 var(--medal-rail),
+    inset 0 0 0 1px rgba(110, 231, 255, 0.3);
+}
+
+.board-section + .board-section {
+  margin-top: 1.4rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.board-note {
+  margin: 0.1rem 0 0;
+  color: var(--muted);
+  font-size: 0.65rem;
+}
+
+/* ------------------------------------------------------------- duo modes */
+
+.mode-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: min(22rem, 100%);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.mode-picker legend {
+  padding: 0 0 0.45rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.mode-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.8rem 0.85rem;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.mode-card.selected {
+  background: rgba(110, 231, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(110, 231, 255, 0.35);
+}
+
+.mode-card input {
+  margin-top: 0.2rem;
+  accent-color: var(--accent);
+}
+
+.mode-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.mode-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.mode-body small {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.mode-note {
+  font-size: 0.62rem !important;
+  letter-spacing: 0.02em;
+  opacity: 0.85;
+}
+
+/* The clock is the whole difference between the modes, so it is the loud part. */
+.mode-clock {
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+
+.mode-clock.classic {
+  background: rgba(110, 231, 255, 0.16);
+  color: #a5ecff;
+}
+
+.mode-clock.ranked {
+  background: rgba(244, 63, 94, 0.18);
+  color: #ffc2cc;
+}
+
+.mode-badge {
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.mode-badge.classic {
+  background: rgba(110, 231, 255, 0.14);
+  color: #a5ecff;
+}
+
+.mode-badge.ranked {
+  background: rgba(244, 63, 94, 0.18);
+  color: #ffc2cc;
+}
+
 .leader-name {
   min-width: 0;
   overflow: hidden;

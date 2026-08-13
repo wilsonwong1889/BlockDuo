@@ -24,10 +24,18 @@ export function HomeScreen({ onClassic, onNewClassic, onDuo, onSocial }: Props) 
   const [settings, setSettings] = useState(loadAppSettings);
   const [panel, setPanel] = useState<'settings' | 'statistics' | 'new-game' | null>(null);
   const { profile } = useProgress();
-  const best = loadBest();
-  const savedGame = loadClassicGame();
+
+  // Read once on mount, not on every render: loadClassicGame parses a whole
+  // board, and opening either panel would pay for it again. Navigating swaps
+  // this screen out entirely, so coming back from a game remounts it with fresh
+  // values — there is no stale copy to keep in step.
+  const [initial] = useState(() => ({
+    best: loadBest(),
+    game: loadClassicGame(),
+    statistics: loadStatistics(),
+  }));
+  const { best, game: savedGame, statistics } = initial;
   const hasSavedProgress = !!savedGame && savedGame.state.moveCount > 0;
-  const statistics = loadStatistics();
 
   const changeSettings = (next: AppSettings) => {
     setSettings(next);

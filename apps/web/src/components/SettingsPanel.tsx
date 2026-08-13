@@ -1,4 +1,5 @@
 import { Modal } from './Modal';
+import { effectiveReducedMotion } from '../preferences';
 import type { AppSettings } from '../storage';
 
 interface Props {
@@ -7,15 +8,39 @@ interface Props {
   onClose: () => void;
 }
 
+// Reduced motion is stored as null until the toggle is used, so what the row
+// shows is the resolved answer rather than the raw preference — otherwise it
+// reads "off" on a device that is already suppressing motion.
 const OPTIONS: Array<{
   key: keyof AppSettings;
   label: string;
   description: string;
+  read: (settings: AppSettings) => boolean;
 }> = [
-  { key: 'sound', label: 'Sound', description: 'Game sounds and turn alerts' },
-  { key: 'haptics', label: 'Haptics', description: 'Device feedback for moves and clears' },
-  { key: 'reducedMotion', label: 'Reduced motion', description: 'Minimize movement and animations' },
-  { key: 'highContrast', label: 'High contrast', description: 'Brighter text, edges, and controls' },
+  {
+    key: 'sound',
+    label: 'Sound',
+    description: 'Game sounds and turn alerts',
+    read: (settings) => settings.sound,
+  },
+  {
+    key: 'haptics',
+    label: 'Haptics',
+    description: 'Device feedback for moves and clears',
+    read: (settings) => settings.haptics,
+  },
+  {
+    key: 'reducedMotion',
+    label: 'Reduced motion',
+    description: 'Follows your device until you change it here',
+    read: effectiveReducedMotion,
+  },
+  {
+    key: 'highContrast',
+    label: 'High contrast',
+    description: 'Brighter text, edges, and controls',
+    read: (settings) => settings.highContrast,
+  },
 ];
 
 export function SettingsPanel({ settings, onChange, onClose }: Props) {
@@ -30,7 +55,7 @@ export function SettingsPanel({ settings, onChange, onClose }: Props) {
             </span>
             <input
               type="checkbox"
-              checked={settings[option.key]}
+              checked={option.read(settings)}
               onChange={(event) =>
                 onChange({ ...settings, [option.key]: event.target.checked })
               }

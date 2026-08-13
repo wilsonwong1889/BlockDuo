@@ -1487,30 +1487,12 @@ button {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-
-  /* Preserve clear feedback without expansion, pulsing, or per-cell motion. */
-  .board-clear-ring {
-    opacity: 0.8;
-    transform: none;
-    box-shadow: none;
-    animation: none !important;
-  }
-
-  .cell.clearing {
-    opacity: 0.42;
-    background: var(--clear-flash);
-    animation: none !important;
-  }
-}
-
+/*
+ * Reduced motion is driven entirely by this class, never by the media query
+ * directly. The class is set from the device setting before React renders, so
+ * nothing animates in the gap, and an explicit preference can then override the
+ * device in either direction — which is what a bare media query cannot do.
+ */
 html.reduce-motion *,
 html.reduce-motion *::before,
 html.reduce-motion *::after {
@@ -1519,6 +1501,7 @@ html.reduce-motion *::after {
   transition-duration: 0.01ms !important;
 }
 
+/* Preserve clear feedback without expansion, pulsing, or per-cell motion. */
 html.reduce-motion .board-clear-ring,
 html.reduce-motion .cell.clearing {
   animation: none !important;

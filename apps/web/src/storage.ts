@@ -33,8 +33,21 @@ const KEYS = {
 export interface AppSettings {
   sound: boolean;
   haptics: boolean;
-  reducedMotion: boolean;
+  /** null follows the device; a boolean is a choice the player made. */
+  reducedMotion: boolean | null;
   highContrast: boolean;
+}
+
+/**
+ * An explicit choice wins over the device, in both directions. Someone who has
+ * reduced motion on system-wide but wants the animations here has to be able to
+ * say so, which is the case a bare media query cannot express.
+ */
+export function resolveReducedMotion(
+  preference: boolean | null,
+  systemPrefersReduce: boolean,
+): boolean {
+  return preference ?? systemPrefersReduce;
 }
 
 export interface ProgressIdentity {
@@ -90,7 +103,7 @@ export function loadAppSettings(): AppSettings {
   return {
     sound: saved?.sound ?? !loadMuted(),
     haptics: saved?.haptics ?? true,
-    reducedMotion: saved?.reducedMotion ?? false,
+    reducedMotion: typeof saved?.reducedMotion === 'boolean' ? saved.reducedMotion : null,
     highContrast: saved?.highContrast ?? false,
   };
 }

@@ -22,10 +22,9 @@ function useCountUp(target: number, ms = 420) {
   useEffect(() => {
     if (shownRef.current === target) return;
 
-    if (
-      document.documentElement.classList.contains('reduce-motion') ||
-      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-    ) {
+    // The same class the stylesheet uses, so the toggle and the device setting
+    // are already resolved into one answer by the time we ask.
+    if (document.documentElement.classList.contains('reduce-motion')) {
       shownRef.current = target;
       if (elementRef.current) elementRef.current.textContent = target.toLocaleString();
       return;

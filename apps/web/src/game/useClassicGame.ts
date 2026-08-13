@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { applyMove, newGame, type GameEvent, type GameState, type Move } from '@blokduo/engine';
+import { applyMove, newGame, type GameState, type Move } from '@blokduo/engine';
 import * as sfx from '../audio/sfx';
 import { loadBest, loadGame, saveBest, saveGame } from '../storage';
-import { haptic } from '../native';
-import { buildClearFx, fxId, type ClearFx, type FloatFx } from './fx';
+import type { ClearFx, FloatFx } from './fx';
+import { useGameFx } from './useGameFx';
 
 export type { ClearFx, FloatFx };
 
@@ -21,20 +21,11 @@ export interface ClassicGame {
 export function useClassicGame(): ClassicGame {
   const [state, setState] = useState<GameState>(() => loadGame() ?? newGame());
   const [best, setBest] = useState<number>(() => loadBest());
-  const [clearFx, setClearFx] = useState<ClearFx[]>([]);
-  const [floats, setFloats] = useState<FloatFx[]>([]);
-  const [shake, setShake] = useState(0);
-  const timers = useRef<number[]>([]);
+  const { clearFx, floats, shake, playMove, resetFx } = useGameFx();
 
-  useEffect(() => {
-    return () => {
-      timers.current.forEach(clearTimeout);
-    };
-  }, []);
-
-  const schedule = (fn: () => void, ms: number) => {
-    timers.current.push(window.setTimeout(fn, ms));
-  };
+  // Persistence runs after React commits the move, keeping synchronous storage
+  // work out of the pointer-up hot path.
+  useEffect(() => saveGame(state), [state]);
 
   // The authoritative state is kept in a ref alongside React state.
   //
@@ -55,110 +46,25 @@ export function useClassicGame(): ClassicGame {
     stateRef.current = next;
     setState(next);
 
-    handleEvents(current, events, move, { setClearFx, setFloats, setShake, schedule });
+    playMove(current, events, move, true);
 
     setBest((b) => {
       if (next.score <= b) return b;
       saveBest(next.score);
       return next.score;
     });
-    saveGame(next);
     return true;
-  }, []);
+  }, [playMove]);
 
   const restart = useCallback(() => {
-    setClearFx([]);
-    setFloats([]);
-    setShake(0);
+    resetFx();
     saveGame(null);
     const fresh = newGame();
     stateRef.current = fresh;
     setState(fresh);
-  }, []);
+  }, [resetFx]);
 
   const reject = useCallback(() => sfx.playReject(), []);
 
   return { state, best, clearFx, floats, shake, commit, restart, reject };
-}
-
-interface FxSetters {
-  setClearFx: React.Dispatch<React.SetStateAction<ClearFx[]>>;
-  setFloats: React.Dispatch<React.SetStateAction<FloatFx[]>>;
-  setShake: React.Dispatch<React.SetStateAction<number>>;
-  schedule: (fn: () => void, ms: number) => void;
-}
-
-/**
- * Turn engine events into sound and animation.
- *
- * The engine has already removed cleared cells from the board, so the clear
- * animation is drawn as an overlay of the cells *as they were* — that way there
- * is only ever one board state, and no need to keep a stale copy around for the
- * duration of the animation.
- */
-function handleEvents(
-  before: GameState,
-  events: GameEvent[],
-  move: Move,
-  { setClearFx, setFloats, setShake, schedule }: FxSetters,
-) {
-  let clearedLines = 0;
-
-  for (const event of events) {
-    switch (event.type) {
-      case 'placed': {
-        sfx.playPlace();
-        void haptic('place');
-        break;
-      }
-      case 'cleared': {
-        clearedLines = event.rows.length + event.cols.length;
-        const fx = buildClearFx(
-          before.board,
-          before.hand[move.slot],
-          move,
-          event.cellIndices,
-          clearedLines,
-        );
-        const id = fx.id;
-        setClearFx((list) => [...list, fx]);
-        schedule(() => setClearFx((list) => list.filter((f) => f.id !== id)), 520);
-
-        const floatId = fxId();
-        setFloats((f) => [
-          ...f,
-          {
-            id: floatId,
-            row: move.row,
-            col: move.col,
-            text: `+${event.points}`,
-            kind: clearedLines > 1 ? 'combo' : 'score',
-          },
-        ]);
-        schedule(() => setFloats((f) => f.filter((x) => x.id !== floatId)), 900);
-
-        setShake(clearedLines);
-        schedule(() => setShake(0), 340);
-        break;
-      }
-      case 'streak': {
-        sfx.playClear(clearedLines || 1, event.streak - 1);
-        void haptic(clearedLines > 1 ? 'combo' : 'clear');
-        break;
-      }
-      case 'perfect': {
-        sfx.playPerfect();
-        const id = fxId();
-        setFloats((f) => [...f, { id, row: 3, col: 2, text: 'PERFECT!', kind: 'perfect' }]);
-        schedule(() => setFloats((f) => f.filter((x) => x.id !== id)), 1400);
-        break;
-      }
-      case 'gameover': {
-        schedule(() => sfx.playGameOver(), 400);
-        break;
-      }
-      default:
-        break;
-    }
-  }
 }

@@ -438,6 +438,15 @@ button {
   z-index: 40;
 }
 
+/* Moving via a compositor transform avoids layout on every drag frame. The
+   inner piece keeps its own lift animation without competing for transform. */
+.drag-piece-position {
+  position: fixed;
+  left: 0;
+  top: 0;
+  will-change: transform;
+}
+
 /* ---------------------------------------------------------------- overlay */
 
 .overlay {
@@ -898,6 +907,11 @@ button {
   transform-origin: left center;
   background: rgba(110, 231, 255, 0.25);
   transition: transform 0.25s linear;
+}
+
+.turn-timer-value {
+  position: relative;
+  z-index: 1;
 }
 
 .turn-timer.urgent {

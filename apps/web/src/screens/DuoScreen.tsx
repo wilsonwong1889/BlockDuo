@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
-import { TURN_MS } from '@blokduo/engine';
 import { Board } from '../components/Board';
 import { DragLayer } from '../components/DragLayer';
 import { GameOver } from '../components/GameOver';
 import { Hud } from '../components/Hud';
 import { Tray } from '../components/Tray';
+import { TurnTimer } from '../components/TurnTimer';
 import { useDuoGame } from '../game/useDuoGame';
 import { useGeometry, usePlacement } from '../game/usePlacement';
 import { inviteUrl } from '../net/config';
@@ -60,6 +60,14 @@ export function DuoScreen({ code, clientId, name, onHome }: Props) {
     return duo.myTurn ? 'Your turn' : `${partner?.name ?? 'Partner'}'s turn`;
   }, [duo.status, duo.myTurn, snapshot, partner]);
 
+  const localDeadline = useMemo(
+    () =>
+      snapshot?.deadline
+        ? Date.now() + Math.max(0, snapshot.deadline - snapshot.serverNow)
+        : null,
+    [snapshot?.deadline, snapshot?.serverNow],
+  );
+
   if (!duo.state || !snapshot) {
     return (
       <div className="screen duo">
@@ -81,7 +89,6 @@ export function DuoScreen({ code, clientId, name, onHome }: Props) {
   }
 
   const waiting = snapshot.phase === 'waiting';
-  const timerFraction = duo.secondsLeft === null ? 0 : Math.min(1, (duo.secondsLeft * 1000) / TURN_MS);
 
   return (
     <div className="screen duo">
@@ -134,11 +141,8 @@ export function DuoScreen({ code, clientId, name, onHome }: Props) {
 
       <div className={`turn-banner${duo.myTurn ? ' mine' : ''}`} aria-live="polite">
         <span>{duo.lastEvent ?? turnLabel}</span>
-        {duo.secondsLeft !== null && snapshot.phase === 'playing' && (
-          <span className={`turn-timer${duo.secondsLeft <= 10 ? ' urgent' : ''}`}>
-            <span className="turn-timer-bar" style={{ transform: `scaleX(${timerFraction})` }} />
-            {duo.secondsLeft}s
-          </span>
+        {localDeadline !== null && snapshot.phase === 'playing' && (
+          <TurnTimer deadline={localDeadline} />
         )}
       </div>
 
@@ -152,7 +156,7 @@ export function DuoScreen({ code, clientId, name, onHome }: Props) {
           floats={duo.floats}
           shake={duo.shake}
           onCellEnter={placement.selected !== null ? placement.setCursor : undefined}
-          onCellClick={placement.selected !== null ? () => placement.placeAtCursor() : undefined}
+          onCellClick={placement.selected !== null ? placement.placeAtCursor : undefined}
           dimmed={!duo.myTurn}
         />
       </div>

@@ -84,7 +84,7 @@ export function ClassicScreen({ onHome }: Props) {
           floats={game.floats}
           shake={game.shake}
           onCellEnter={selected !== null ? placement.setCursor : undefined}
-          onCellClick={selected !== null ? () => placeAtCursor() : undefined}
+          onCellClick={selected !== null ? placeAtCursor : undefined}
           dimmed={game.state.over}
         />
       </div>

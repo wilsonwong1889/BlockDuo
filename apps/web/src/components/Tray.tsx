@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { memo, useRef } from 'react';
 import { getPiece, hasAnyPlacement, type Board, type HandSlot } from '@blokduo/engine';
 import { PieceShape } from './PieceShape';
 
@@ -23,7 +23,7 @@ interface Props {
  */
 export const TRAY_SCALE = 0.5;
 
-export function Tray({
+function TrayView({
   hand,
   board,
   boardStride,
@@ -96,3 +96,6 @@ export function Tray({
     </div>
   );
 }
+
+/** The tray changes per move, not per pointer pixel or countdown tick. */
+export const Tray = memo(TrayView);

@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { getPiece } from '@blokduo/engine';
 import { colorVars } from '../theme';
 
@@ -16,7 +17,7 @@ interface Props {
  * follows your finger. Both call sites render the same component at different
  * strides, so a piece looks identical as it scales up out of the tray.
  */
-export function PieceShape({ pieceId, color, stride, gap, className, style }: Props) {
+function PieceShapeView({ pieceId, color, stride, gap, className, style }: Props) {
   const piece = getPiece(pieceId);
   const cell = Math.max(stride - gap, 1);
 
@@ -42,3 +43,5 @@ export function PieceShape({ pieceId, color, stride, gap, className, style }: Pr
     </div>
   );
 }
+
+export const PieceShape = memo(PieceShapeView);

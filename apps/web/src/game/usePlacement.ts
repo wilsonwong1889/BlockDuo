@@ -1,35 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { SIZE, getPiece, type Board, type HandSlot, type Move } from '@blokduo/engine';
 import {
-  SIZE,
-  fits,
-  findClears,
-  getPiece,
-  idx,
-  place,
-  type Board,
-  type HandSlot,
-  type Move,
-} from '@blokduo/engine';
+  anchorFromDrag,
+  isTapGesture,
+  previewAtAnchor,
+  type DragState,
+  type Geometry,
+  type Preview,
+} from './placementMath';
 
-/**
- * Board geometry is computed in JS rather than left to CSS grid.
- *
- * Dragging needs to convert pointer coordinates into a board cell every frame,
- * and doing that against a measured stride is exact. Cells are positioned
- * absolutely from the same numbers, so what the maths thinks is at (row, col) is
- * always precisely what is drawn there.
- */
-export interface Geometry {
-  /** Distance from one cell's left edge to the next, including the gap. */
-  stride: number;
-  /** Drawn size of a cell. */
-  cell: number;
-  gap: number;
-  rect: DOMRect | null;
-}
+export type { DragState, Geometry, Preview } from './placementMath';
 
 /**
  * Measure the board.
+ *
+ * Geometry is computed in JS because dragging converts pointer coordinates to
+ * a board cell. Cells are drawn from the same stride, keeping input and visuals
+ * aligned exactly.
  *
  * The element is tracked in state via a callback ref rather than read from a
  * ref object: duo only mounts the board once the room state arrives, and an
@@ -43,65 +30,54 @@ export function useGeometry(): { geom: Geometry; boardRef: (el: HTMLDivElement |
   useEffect(() => {
     if (!el) return;
 
+    let measureFrame: number | null = null;
+
     const measure = () => {
+      measureFrame = null;
       const rect = el.getBoundingClientRect();
+      if (rect.width <= 0) return;
       const stride = rect.width / SIZE;
       const gap = Math.max(2, Math.round(stride * 0.08));
-      setGeom({ stride, cell: stride - gap, gap, rect });
+      setGeom((current) => {
+        const unchanged =
+          Math.abs(current.stride - stride) < 0.01 &&
+          current.gap === gap &&
+          current.rect !== null &&
+          Math.abs(current.rect.left - rect.left) < 0.25 &&
+          Math.abs(current.rect.top - rect.top) < 0.25 &&
+          Math.abs(current.rect.width - rect.width) < 0.25;
+        return unchanged ? current : { stride, cell: stride - gap, gap, rect };
+      });
+    };
+
+    const scheduleMeasure = () => {
+      if (measureFrame === null) measureFrame = window.requestAnimationFrame(measure);
+    };
+
+    const onVisibility = () => {
+      if (!document.hidden) scheduleMeasure();
     };
 
     measure();
-    const ro = new ResizeObserver(measure);
+    const ro = new ResizeObserver(scheduleMeasure);
     ro.observe(el);
-    window.addEventListener('scroll', measure, true);
-    window.addEventListener('resize', measure);
+    window.addEventListener('scroll', scheduleMeasure, { capture: true, passive: true });
+    window.addEventListener('resize', scheduleMeasure);
     // A hidden tab reports a zero-sized viewport, so anything measured while
     // backgrounded is wrong. Phones background apps constantly, so re-measure
     // on the way back rather than trusting the resize to have fired.
-    document.addEventListener('visibilitychange', measure);
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
+      if (measureFrame !== null) window.cancelAnimationFrame(measureFrame);
       ro.disconnect();
-      window.removeEventListener('scroll', measure, true);
-      window.removeEventListener('resize', measure);
-      document.removeEventListener('visibilitychange', measure);
+      window.removeEventListener('scroll', scheduleMeasure, true);
+      window.removeEventListener('resize', scheduleMeasure);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [el]);
 
   return { geom, boardRef: setEl };
 }
-
-export interface DragState {
-  slot: number;
-  pieceId: string;
-  color: number;
-  pointerId: number;
-  /** Current pointer position in client coordinates. */
-  x: number;
-  y: number;
-  /** Where inside the piece it was grabbed, in cell units. */
-  grabCellX: number;
-  grabCellY: number;
-  touch: boolean;
-}
-
-export interface Preview {
-  row: number;
-  col: number;
-  valid: boolean;
-  /** Board indices the piece would occupy. */
-  cells: number[];
-  /** Rows and columns that would clear if this placement were made. */
-  clearRows: number[];
-  clearCols: number[];
-}
-
-/**
- * On touch, the piece floats above the finger by this many cells. Without it the
- * thumb covers exactly the cells you are trying to aim at, which is the single
- * biggest difference between a block puzzle that feels good on a phone and one
- * that does not.
- */
-const TOUCH_LIFT_CELLS = 1.6;
 
 export interface PlacementApi {
   drag: DragState | null;
@@ -136,7 +112,21 @@ export function usePlacement(
   const [selected, setSelected] = useState<number | null>(null);
   const [cursor, setCursorState] = useState<{ row: number; col: number } | null>(null);
   const dragRef = useRef<DragState | null>(null);
+  const boardStateRef = useRef(board);
+  const handRef = useRef(hand);
+  const geomRef = useRef(geom);
+  const commitRef = useRef(onCommit);
+  const rejectRef = useRef(onReject);
+  const moveFrameRef = useRef<number | null>(null);
+  const pendingPointRef = useRef<{ x: number; y: number } | null>(null);
+  const suppressSelectRef = useRef<{ slot: number; until: number } | null>(null);
+
   dragRef.current = drag;
+  boardStateRef.current = board;
+  handRef.current = hand;
+  geomRef.current = geom;
+  commitRef.current = onCommit;
+  rejectRef.current = onReject;
 
   // Drop selection whenever the piece behind it disappears (placed, or refilled).
   useEffect(() => {
@@ -148,63 +138,32 @@ export function usePlacement(
 
   useEffect(() => {
     if (!enabled) {
+      dragRef.current = null;
       setDrag(null);
       setSelected(null);
       setCursorState(null);
     }
   }, [enabled]);
 
-  /** Anchor implied by the current drag, in board coordinates. */
-  const dragAnchor = useMemo(() => {
-    if (!drag || !geom.rect || geom.stride === 0) return null;
-    const lift = drag.touch ? TOUCH_LIFT_CELLS * geom.stride : 0;
-    const originX = drag.x - drag.grabCellX * geom.stride;
-    const originY = drag.y - drag.grabCellY * geom.stride - lift;
-    return {
-      row: Math.round((originY - geom.rect.top) / geom.stride),
-      col: Math.round((originX - geom.rect.left) / geom.stride),
+  const activeSlot = drag?.slot ?? selected;
+  let activeAnchor = drag ? anchorFromDrag(drag, geom) : null;
+  if (!drag && selected !== null && cursor && hand[selected]) {
+    const piece = getPiece(hand[selected].pieceId);
+    activeAnchor = {
+      row: cursor.row - Math.floor((piece.h - 1) / 2),
+      col: cursor.col - Math.floor((piece.w - 1) / 2),
     };
-  }, [drag, geom]);
+  }
+  const anchorRow = activeAnchor?.row ?? null;
+  const anchorCol = activeAnchor?.col ?? null;
 
+  // Pointer pixels change every frame, but the board only needs a new preview
+  // when the implied cell changes. Keeping this object stable lets the memoized
+  // board skip nearly every drag-frame render.
   const preview = useMemo<Preview | null>(() => {
-    const slot = drag ? drag.slot : selected;
-    if (slot === null) return null;
-    const held = hand[slot];
-    if (!held) return null;
-
-    const piece = getPiece(held.pieceId);
-    let anchor: { row: number; col: number } | null = null;
-
-    if (drag) {
-      anchor = dragAnchor;
-    } else if (cursor) {
-      // Tap and keyboard aim from the middle of the piece, which is where people
-      // expect the shape to land relative to the cell they picked.
-      anchor = {
-        row: cursor.row - Math.floor((piece.h - 1) / 2),
-        col: cursor.col - Math.floor((piece.w - 1) / 2),
-      };
-    }
-    if (!anchor) return null;
-
-    const { row, col } = anchor;
-    const valid = fits(board, piece, row, col);
-    const cells = piece.cells
-      .map(([dr, dc]) => ({ r: row + dr, c: col + dc }))
-      .filter(({ r, c }) => r >= 0 && c >= 0 && r < SIZE && c < SIZE)
-      .map(({ r, c }) => idx(r, c));
-
-    let clearRows: number[] = [];
-    let clearCols: number[] = [];
-    if (valid) {
-      const after = place(board, piece, row, col, held.color);
-      const clears = findClears(after);
-      clearRows = clears.rows;
-      clearCols = clears.cols;
-    }
-
-    return { row, col, valid, cells, clearRows, clearCols };
-  }, [drag, dragAnchor, selected, cursor, hand, board]);
+    if (activeSlot === null || anchorRow === null || anchorCol === null) return null;
+    return previewAtAnchor(board, hand, activeSlot, { row: anchorRow, col: anchorCol });
+  }, [activeSlot, anchorRow, anchorCol, board, hand]);
 
   const previewRef = useRef<Preview | null>(null);
   previewRef.current = preview;
@@ -226,63 +185,115 @@ export function usePlacement(
       }
       setSelected(null);
       setCursorState(null);
-      setDrag({
+      const next: DragState = {
         slot,
         pieceId: held.pieceId,
         color: held.color,
         pointerId: event.pointerId,
         x: event.clientX,
         y: event.clientY,
+        originX: event.clientX,
+        originY: event.clientY,
         // Captured in cell units so the grab point survives the piece scaling up
         // from tray size to board size mid-drag.
         grabCellX: trayStride > 0 ? (event.clientX - trayPieceRect.left) / trayStride : 0,
         grabCellY: trayStride > 0 ? (event.clientY - trayPieceRect.top) / trayStride : 0,
         touch: event.pointerType !== 'mouse',
-      });
+      };
+      dragRef.current = next;
+      setDrag(next);
     },
     [enabled],
   );
 
-  // Pointer move/up are bound to the window, not the piece: a fast drag can
-  // outrun the element under the cursor, and releasing outside the board must
-  // still end the drag.
+  // Pointer listeners stay mounted for the lifetime of the surface. Previously
+  // this effect depended on the whole drag object, so every pointermove removed
+  // and re-added all three global listeners. Moves are also coalesced to one
+  // React update per animation frame for 120Hz/240Hz touchscreens.
   useEffect(() => {
-    if (!drag) return;
+    const cancelMoveFrame = () => {
+      if (moveFrameRef.current !== null) {
+        window.cancelAnimationFrame(moveFrameRef.current);
+        moveFrameRef.current = null;
+      }
+      pendingPointRef.current = null;
+    };
 
     const onMove = (e: PointerEvent) => {
-      if (e.pointerId !== drag.pointerId) return;
+      const current = dragRef.current;
+      if (!current || e.pointerId !== current.pointerId) return;
       e.preventDefault();
-      setDrag((d) => (d ? { ...d, x: e.clientX, y: e.clientY } : d));
+      pendingPointRef.current = { x: e.clientX, y: e.clientY };
+      if (moveFrameRef.current !== null) return;
+      moveFrameRef.current = window.requestAnimationFrame(() => {
+        moveFrameRef.current = null;
+        const active = dragRef.current;
+        const point = pendingPointRef.current;
+        pendingPointRef.current = null;
+        if (!active || !point) return;
+        const next = { ...active, x: point.x, y: point.y };
+        dragRef.current = next;
+        setDrag(next);
+      });
     };
 
     const onUp = (e: PointerEvent) => {
-      if (e.pointerId !== drag.pointerId) return;
-      const p = previewRef.current;
-      const current = dragRef.current;
-      setDrag(null);
-      if (!current) return;
-      if (p?.valid) {
-        onCommit({ slot: current.slot, row: p.row, col: p.col });
-      } else {
-        onReject();
+      const active = dragRef.current;
+      if (!active || e.pointerId !== active.pointerId) return;
+      const finalDrag = { ...active, x: e.clientX, y: e.clientY };
+      // A tap is the click-to-select path, not a failed drag. Let the tray's
+      // click handler run without playing a rejection sound or committing.
+      if (isTapGesture(finalDrag, e.clientX, e.clientY)) {
+        cancelMoveFrame();
+        dragRef.current = null;
+        setDrag(null);
+        return;
       }
+
+      e.preventDefault();
+      const anchor = anchorFromDrag(finalDrag, geomRef.current);
+      const p = anchor
+        ? previewAtAnchor(boardStateRef.current, handRef.current, finalDrag.slot, anchor)
+        : null;
+      cancelMoveFrame();
+      dragRef.current = null;
+      setDrag(null);
+      // Browsers can dispatch a click after a drag. Suppress just that click so
+      // the newly refilled piece in this slot is not accidentally selected.
+      suppressSelectRef.current = { slot: finalDrag.slot, until: performance.now() + 400 };
+      if (
+        p?.valid &&
+        commitRef.current({ slot: finalDrag.slot, row: p.row, col: p.col })
+      ) {
+        return;
+      }
+      rejectRef.current();
     };
 
-    const onCancel = () => setDrag(null);
+    const onCancel = (e: PointerEvent) => {
+      if (e.pointerId !== dragRef.current?.pointerId) return;
+      cancelMoveFrame();
+      dragRef.current = null;
+      setDrag(null);
+    };
 
     window.addEventListener('pointermove', onMove, { passive: false });
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onCancel);
     return () => {
+      cancelMoveFrame();
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
     };
-  }, [drag, onCommit, onReject]);
+  }, []);
 
   const toggleSelect = useCallback(
     (slot: number) => {
       if (!enabled || !hand[slot]) return;
+      const suppressed = suppressSelectRef.current;
+      suppressSelectRef.current = null;
+      if (suppressed?.slot === slot && performance.now() <= suppressed.until) return;
       setSelected((s) => (s === slot ? null : slot));
       setCursorState((c) => c ?? { row: 3, col: 3 });
     },

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   applyMove,
   decodeState,
-  type GameEvent,
   type GameState,
   type Move,
   type RoomSnapshot,
@@ -10,9 +9,9 @@ import {
   type ServerMessage,
 } from '@blokduo/engine';
 import * as sfx from '../audio/sfx';
-import { haptic } from '../native';
 import { roomSocketUrl } from '../net/config';
-import { buildClearFx, fxId, type ClearFx, type FloatFx } from './fx';
+import type { ClearFx, FloatFx } from './fx';
+import { useGameFx } from './useGameFx';
 
 export type DuoStatus = 'connecting' | 'live' | 'reconnecting' | 'closed' | 'error';
 
@@ -24,7 +23,6 @@ export interface DuoGame {
   /** What to draw: the optimistic local board while a move is in flight. */
   state: GameState | null;
   myTurn: boolean;
-  secondsLeft: number | null;
   clearFx: ClearFx[];
   floats: FloatFx[];
   shake: number;
@@ -42,18 +40,21 @@ export function useDuoGame(code: string, clientId: string, name: string): DuoGam
   const [seat, setSeat] = useState<Seat | null>(null);
   const [snapshot, setSnapshot] = useState<RoomSnapshot | null>(null);
   const [optimistic, setOptimistic] = useState<GameState | null>(null);
-  const [clearFx, setClearFx] = useState<ClearFx[]>([]);
-  const [floats, setFloats] = useState<FloatFx[]>([]);
-  const [shake, setShake] = useState(0);
   const [lastEvent, setLastEvent] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
+  const {
+    clearFx,
+    floats,
+    shake,
+    playMove,
+    showClear,
+    showPerfect,
+    playGameOver,
+  } = useGameFx();
 
   /** The socket currently considered live. Anything else is a leftover. */
   const ws = useRef<WebSocket | null>(null);
   const seq = useRef(0);
-  /** serverNow minus local clock, so the turn timer does not trust the device. */
-  const skew = useRef(0);
-  const timers = useRef<number[]>([]);
+  const timers = useRef<Set<number>>(new Set());
   const seatRef = useRef<Seat | null>(null);
   const snapshotRef = useRef<RoomSnapshot | null>(null);
   const optimisticRef = useRef<GameState | null>(null);
@@ -63,66 +64,16 @@ export function useDuoGame(code: string, clientId: string, name: string): DuoGam
   optimisticRef.current = optimistic;
 
   const schedule = useCallback((fn: () => void, ms: number) => {
-    timers.current.push(window.setTimeout(fn, ms));
+    const id = window.setTimeout(() => {
+      timers.current.delete(id);
+      fn();
+    }, ms);
+    timers.current.add(id);
   }, []);
 
   const serverState = useMemo(
     () => (snapshot ? decodeState(snapshot.game) : null),
     [snapshot],
-  );
-
-  // ------------------------------------------------------------- effects/audio
-
-  const runClearFx = useCallback(
-    (before: GameState, move: Move, cellIndices: number[], lines: number, points: number) => {
-      const fx = buildClearFx(before.board, before.hand[move.slot], move, cellIndices, lines);
-      setClearFx((list) => [...list, fx]);
-      schedule(() => setClearFx((list) => list.filter((f) => f.id !== fx.id)), 520);
-
-      const floatId = fxId();
-      setFloats((list) => [
-        ...list,
-        {
-          id: floatId,
-          row: move.row,
-          col: move.col,
-          text: `+${points}`,
-          kind: lines > 1 ? 'combo' : 'score',
-        },
-      ]);
-      schedule(() => setFloats((list) => list.filter((f) => f.id !== floatId)), 900);
-
-      setShake(lines);
-      schedule(() => setShake(0), 340);
-    },
-    [schedule],
-  );
-
-  const runLocalEvents = useCallback(
-    (before: GameState, events: GameEvent[], move: Move) => {
-      let lines = 0;
-      for (const event of events) {
-        if (event.type === 'placed') {
-          sfx.playPlace();
-          void haptic('place');
-        }
-        if (event.type === 'cleared') {
-          lines = event.rows.length + event.cols.length;
-          runClearFx(before, move, event.cellIndices, lines, event.points);
-        }
-        if (event.type === 'streak') {
-          sfx.playClear(lines || 1, event.streak - 1);
-          void haptic(lines > 1 ? 'combo' : 'clear');
-        }
-        if (event.type === 'perfect') {
-          sfx.playPerfect();
-          const id = fxId();
-          setFloats((list) => [...list, { id, row: 3, col: 2, text: 'PERFECT!', kind: 'perfect' }]);
-          schedule(() => setFloats((list) => list.filter((f) => f.id !== id)), 1400);
-        }
-      }
-    },
-    [runClearFx, schedule],
   );
 
   // -------------------------------------------------------------- socket wiring
@@ -180,20 +131,22 @@ export function useDuoGame(code: string, clientId: string, name: string): DuoGam
     };
 
     const handle = (msg: ServerMessage) => {
-      if ('snapshot' in msg) {
-        skew.current = msg.snapshot.serverNow - Date.now();
-      }
+      const adoptSnapshot = (next: RoomSnapshot) => {
+        snapshotRef.current = next;
+        optimisticRef.current = null;
+        setSnapshot(next);
+        setOptimistic(null);
+      };
 
       switch (msg.t) {
         case 'welcome':
+          seatRef.current = msg.seat;
           setSeat(msg.seat);
-          setSnapshot(msg.snapshot);
-          setOptimistic(null);
+          adoptSnapshot(msg.snapshot);
           break;
 
         case 'state':
-          setSnapshot(msg.snapshot);
-          setOptimistic(null);
+          adoptSnapshot(msg.snapshot);
           break;
 
         case 'applied': {
@@ -204,7 +157,7 @@ export function useDuoGame(code: string, clientId: string, name: string): DuoGam
             sfx.playPlace();
             if (msg.clears) {
               const lines = msg.clears.rows.length + msg.clears.cols.length;
-              runClearFx(
+              showClear(
                 before,
                 { slot: msg.slot, row: msg.row, col: msg.col },
                 msg.clears.cellIndices,
@@ -213,10 +166,9 @@ export function useDuoGame(code: string, clientId: string, name: string): DuoGam
               );
               sfx.playClear(lines, decodeState(msg.snapshot.game).streak - 1);
             }
-            if (msg.perfect) sfx.playPerfect();
+            if (msg.perfect) showPerfect();
           }
-          setSnapshot(msg.snapshot);
-          setOptimistic(null);
+          adoptSnapshot(msg.snapshot);
           if (msg.snapshot.turn === seatRef.current && msg.snapshot.phase === 'playing') {
             sfx.playYourTurn();
           }
@@ -225,16 +177,14 @@ export function useDuoGame(code: string, clientId: string, name: string): DuoGam
 
         case 'rejected':
           // The server is the authority: roll straight back to its board.
-          setSnapshot(msg.snapshot);
-          setOptimistic(null);
+          adoptSnapshot(msg.snapshot);
           sfx.playReject();
           setLastEvent(reasonText(msg.reason));
           schedule(() => setLastEvent(null), 2600);
           break;
 
         case 'timeout':
-          setSnapshot(msg.snapshot);
-          setOptimistic(null);
+          adoptSnapshot(msg.snapshot);
           setLastEvent(
             msg.seat === seatRef.current ? 'You ran out of time' : 'Partner ran out of time',
           );
@@ -242,9 +192,8 @@ export function useDuoGame(code: string, clientId: string, name: string): DuoGam
           break;
 
         case 'over':
-          setSnapshot(msg.snapshot);
-          setOptimistic(null);
-          schedule(() => sfx.playGameOver(), 400);
+          adoptSnapshot(msg.snapshot);
+          playGameOver();
           break;
 
         case 'error':
@@ -262,25 +211,11 @@ export function useDuoGame(code: string, clientId: string, name: string): DuoGam
       cancelled = true;
       retryTimers.forEach(clearTimeout);
       timers.current.forEach(clearTimeout);
-      timers.current = [];
+      timers.current.clear();
       if (ws.current === socket) ws.current = null;
       socket?.close(1000, 'leaving');
     };
-  }, [code, clientId, name, runClearFx, schedule]);
-
-  // The turn clock is redrawn once a second rather than on every frame; it is
-  // only ever shown to the nearest second.
-  useEffect(() => {
-    if (!snapshot?.deadline) return;
-    const id = window.setInterval(() => setTick((t) => t + 1), 250);
-    return () => window.clearInterval(id);
-  }, [snapshot?.deadline]);
-
-  const secondsLeft = useMemo(() => {
-    if (!snapshot?.deadline) return null;
-    void tick;
-    return Math.max(0, Math.ceil((snapshot.deadline - (Date.now() + skew.current)) / 1000));
-  }, [snapshot?.deadline, tick]);
+  }, [code, clientId, name, playGameOver, schedule, showClear, showPerfect]);
 
   // ------------------------------------------------------------------- actions
 
@@ -298,23 +233,36 @@ export function useDuoGame(code: string, clientId: string, name: string): DuoGam
       const snap = snapshotRef.current;
       if (!current || !snap || snap.phase !== 'playing' || snap.turn !== seatRef.current) return false;
       if (optimisticRef.current) return false;
+      const socket = ws.current;
+      if (!socket || socket.readyState !== WebSocket.OPEN) return false;
 
       const res = applyMove(current, move);
       if (!res.ok) return false;
 
+      seq.current += 1;
+      try {
+        socket.send(
+          JSON.stringify({
+            t: 'place',
+            seq: seq.current,
+            slot: move.slot,
+            row: move.row,
+            col: move.col,
+          }),
+        );
+      } catch {
+        return false;
+      }
+
       // Play it locally at once and let the server confirm. At any normal
       // latency the confirmation lands before the drop animation finishes, so
       // the game feels local even though the server decides.
+      optimisticRef.current = res.result.state;
       setOptimistic(res.result.state);
-      runLocalEvents(current, res.result.events, move);
-
-      seq.current += 1;
-      ws.current?.send(
-        JSON.stringify({ t: 'place', seq: seq.current, slot: move.slot, row: move.row, col: move.col }),
-      );
+      playMove(current, res.result.events, move, false);
       return true;
     },
-    [runLocalEvents],
+    [playMove],
   );
 
   const rematch = useCallback(() => {
@@ -330,7 +278,6 @@ export function useDuoGame(code: string, clientId: string, name: string): DuoGam
     snapshot,
     state,
     myTurn,
-    secondsLeft,
     clearFx,
     floats,
     shake,

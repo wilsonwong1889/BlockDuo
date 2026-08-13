@@ -1,4 +1,4 @@
-import { forwardRef } from 'react';
+import { forwardRef, memo } from 'react';
 import { CELLS, SIZE } from '@blokduo/engine';
 import type { Board as BoardData } from '@blokduo/engine';
 import { colorVars } from '../theme';
@@ -17,7 +17,7 @@ interface Props {
   dimmed?: boolean;
 }
 
-export const Board = forwardRef<HTMLDivElement, Props>(function Board(
+const BoardView = forwardRef<HTMLDivElement, Props>(function Board(
   { board, geom, preview, clearFx, floats, shake, onCellEnter, onCellClick, dimmed },
   ref,
 ) {
@@ -99,3 +99,10 @@ export const Board = forwardRef<HTMLDivElement, Props>(function Board(
     </div>
   );
 });
+
+/**
+ * Pointer coordinates update the drag layer every animation frame. The board
+ * only changes when the implied cell, game state, or effects change, so keep 64
+ * cells out of those pixel-level renders.
+ */
+export const Board = memo(BoardView);

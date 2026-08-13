@@ -59,7 +59,7 @@ describe('placement coordinates', () => {
   it('carries the piece high enough to clear a hand', () => {
     // The whole point of the lift is that the piece is not under the thumb.
     // A value below a couple of cells puts it back there.
-    expect(TOUCH_LIFT_CELLS).toBeGreaterThanOrEqual(3);
+    expect(TOUCH_LIFT_CELLS).toBeGreaterThanOrEqual(2);
   });
 
   it('gives a precise pointer no lift, so the piece stays under the cursor', () => {

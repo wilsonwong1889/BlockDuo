@@ -550,6 +550,8 @@ describe('Duo progression settlement', () => {
         mode: 'duo',
         isYou: true,
       });
+      // Already in the visible list, so there is no pinned copy to draw twice.
+      expect(board.self).toBeNull();
     }
   }, 10_000);
 

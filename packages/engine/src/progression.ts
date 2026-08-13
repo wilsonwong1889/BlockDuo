@@ -63,6 +63,12 @@ export interface LeaderboardBoard {
   entries: LeaderboardEntry[];
   /** Rank across the whole board, which can be past the visible entries. */
   selfRank: number | null;
+  /**
+   * Your own row when it falls outside `entries`, so a player ranked past the
+   * cut still sees their score rather than only a number they cannot place.
+   * Null when you are already in the visible list, or have no score at all.
+   */
+  self: LeaderboardEntry | null;
 }
 
 /**

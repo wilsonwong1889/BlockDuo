@@ -101,16 +101,18 @@ export function useClassicGame(startFresh = false): ClassicGame {
       if (rewardEligibleRef.current) queuePendingClassic({ seed: state.seed, moves: transcript });
     };
 
+    // Both outcomes are already known here, so the card opens in its final
+    // shape. Waiting for the settle timer to set this meant the dialog appeared
+    // with no status, grew a "Saving reward…" line a second later, and dropped
+    // it again on success — two layout shifts under the player's eyes.
+    setRewardStatus(rewardEligibleRef.current ? 'pending' : 'unavailable');
+
     const settle = () => {
       if (settled || claimKeyRef.current === key) return;
       settled = true;
       claimKeyRef.current = key;
       persistCompletion();
-      if (!rewardEligibleRef.current) {
-        setRewardStatus('unavailable');
-        return;
-      }
-      setRewardStatus('pending');
+      if (!rewardEligibleRef.current) return;
       void claimClassic(state.seed, transcript).then((result) => {
         if (claimKeyRef.current !== key) return;
         setRewardStatus(result ? 'awarded' : 'queued');

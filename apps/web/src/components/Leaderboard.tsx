@@ -1,4 +1,4 @@
-import type { LeaderboardBoard } from '@blokduo/engine';
+import type { LeaderboardBoard, LeaderboardEntry } from '@blokduo/engine';
 
 interface Props {
   title: string;
@@ -29,29 +29,40 @@ export function Leaderboard({ title, subtitle, board, emptyText, loading }: Prop
       <div className="leaderboard-list" aria-live="polite">
         {loading && <p className="empty-board">Loading scores…</p>}
         {board && board.entries.length === 0 && <p className="empty-board">{emptyText}</p>}
-        {board?.entries.map((entry) => {
-          const medal = medalOf(entry.rank);
-          return (
-            <div
-              className={`leader-row${entry.isYou ? ' you' : ''}${medal ? ` ${medal}` : ''}`}
-              key={`${entry.rank}-${entry.name}`}
-            >
-              <span
-                className={`leader-rank${medal ? ` medal ${medal}` : ''}`}
-                aria-label={medal ? `${PLACES[entry.rank - 1]}, ${medal}` : `Rank ${entry.rank}`}
-              >
-                {entry.rank}
-              </span>
-              <span className="leader-name">
-                {entry.name}
-                {entry.isYou && <small>You</small>}
-              </span>
-              <span className="leader-pieces">{entry.moveCount} pieces</span>
-              <strong className="leader-score">{entry.score.toLocaleString()}</strong>
+        {board?.entries.map((entry) => (
+          <Row entry={entry} key={`${entry.rank}-${entry.name}`} />
+        ))}
+
+        {/* Ranked past the visible cut: show the row, not just the number. */}
+        {board?.self && (
+          <>
+            <div className="leader-gap" aria-hidden>
+              ⋯
             </div>
-          );
-        })}
+            <Row entry={board.self} />
+          </>
+        )}
       </div>
     </section>
+  );
+}
+
+function Row({ entry }: { entry: LeaderboardEntry }) {
+  const medal = medalOf(entry.rank);
+  return (
+    <div className={`leader-row${entry.isYou ? ' you' : ''}${medal ? ` ${medal}` : ''}`}>
+      <span
+        className={`leader-rank${medal ? ` medal ${medal}` : ''}`}
+        aria-label={medal ? `${PLACES[entry.rank - 1]}, ${medal}` : `Rank ${entry.rank}`}
+      >
+        {entry.rank}
+      </span>
+      <span className="leader-name">
+        {entry.name}
+        {entry.isYou && <small>You</small>}
+      </span>
+      <span className="leader-pieces">{entry.moveCount} pieces</span>
+      <strong className="leader-score">{entry.score.toLocaleString()}</strong>
+    </div>
   );
 }

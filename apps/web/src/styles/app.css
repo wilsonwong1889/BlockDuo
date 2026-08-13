@@ -1374,6 +1374,29 @@ button {
     inset 0 0 0 1px rgba(110, 231, 255, 0.3);
 }
 
+.join-peek {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  color: var(--text);
+  font-size: 0.72rem;
+}
+
+.join-peek.unavailable {
+  color: var(--muted);
+}
+
+/* The break between the visible top of the board and your own row below it. */
+.leader-gap {
+  color: var(--muted);
+  font-size: 0.8rem;
+  letter-spacing: 0.3em;
+  line-height: 0.7;
+  text-align: center;
+  opacity: 0.5;
+}
+
 .board-section + .board-section {
   margin-top: 1.4rem;
   padding-top: 0.4rem;

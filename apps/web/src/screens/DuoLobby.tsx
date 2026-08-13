@@ -1,5 +1,11 @@
-import { useState } from 'react';
-import { DUO_TURN_MS, isValidRoomCode, type DuoMode } from '@blokduo/engine';
+import { useEffect, useState } from 'react';
+import {
+  DEFAULT_DUO_MODE,
+  DUO_TURN_MS,
+  isDuoMode,
+  isValidRoomCode,
+  type DuoMode,
+} from '@blokduo/engine';
 import { unlockAudio } from '../audio/sfx';
 import { apiUrl } from '../net/config';
 import { loadDuoMode, loadName, saveDuoMode, saveName } from '../storage';
@@ -32,6 +38,12 @@ export function DuoLobby({ onEnter, onHome }: Props) {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState<'create' | 'join' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [peek, setPeek] = useState<{
+    code: string;
+    exists: boolean;
+    open: boolean;
+    mode: DuoMode;
+  } | null>(null);
 
   const displayName = name.trim() || 'Player';
 
@@ -59,6 +71,44 @@ export function DuoLobby({ onEnter, onHome }: Props) {
       setBusy(null);
     }
   };
+
+  // Look the room up as soon as a full code is typed. The mode is the host's
+  // choice and a five-second turn is not something to discover after joining;
+  // this also says "full" or "no such game" before the button is pressed.
+  useEffect(() => {
+    const wanted = code.trim().toUpperCase();
+    if (!isValidRoomCode(wanted)) {
+      setPeek(null);
+      return;
+    }
+
+    let current = true;
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await fetch(apiUrl(`/api/room/${wanted}`));
+        const body = (await res.json()) as {
+          exists?: boolean;
+          open?: boolean;
+          mode?: DuoMode;
+        };
+        if (current) {
+          setPeek({
+            code: wanted,
+            exists: !!body.exists,
+            open: !!body.open,
+            mode: isDuoMode(body.mode) ? body.mode : DEFAULT_DUO_MODE,
+          });
+        }
+      } catch {
+        if (current) setPeek(null);
+      }
+    }, 350);
+
+    return () => {
+      current = false;
+      window.clearTimeout(timer);
+    };
+  }, [code]);
 
   const join = async () => {
     unlockAudio();
@@ -168,6 +218,21 @@ export function DuoLobby({ onEnter, onHome }: Props) {
           Join
         </button>
       </div>
+
+      {peek?.code === code.trim().toUpperCase() && (
+        <p className={`join-peek${peek.exists && peek.open ? '' : ' unavailable'}`} role="status">
+          {!peek.exists ? (
+            'No game with that code'
+          ) : !peek.open ? (
+            'That game is already full'
+          ) : (
+            <>
+              <span className={`mode-clock ${peek.mode}`}>{seconds(peek.mode)}s</span>
+              {peek.mode === 'ranked' ? 'Ranked Duo — five seconds a turn' : 'Classic Duo'}
+            </>
+          )}
+        </p>
+      )}
 
       {error && (
         <p className="error" role="alert">

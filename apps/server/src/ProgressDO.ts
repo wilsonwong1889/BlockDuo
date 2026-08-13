@@ -287,22 +287,26 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
         record.participantIds.includes(profile.clientId),
       );
 
-      const entries: LeaderboardEntry[] = filtered
-        .slice(0, LEADERBOARD_LIMIT)
-        .map((record, index) => ({
-          rank: index + 1,
-          name: record.names.join(' + '),
-          score: record.score,
-          moveCount: record.moveCount,
-          mode: record.mode,
-          achievedAt: record.achievedAt,
-          isYou: record.participantIds.includes(profile.clientId),
-          isFriend: record.participantIds.some(
-            (id) => id !== profile.clientId && profile.friendIds.includes(id),
-          ),
-        }));
+      const toEntry = (record: RankedScore, index: number): LeaderboardEntry => ({
+        rank: index + 1,
+        name: record.names.join(' + '),
+        score: record.score,
+        moveCount: record.moveCount,
+        mode: record.mode,
+        achievedAt: record.achievedAt,
+        isYou: record.participantIds.includes(profile.clientId),
+        isFriend: record.participantIds.some(
+          (id) => id !== profile.clientId && profile.friendIds.includes(id),
+        ),
+      });
 
-      return { entries, selfRank: selfIndex < 0 ? null : selfIndex + 1 };
+      const entries = filtered.slice(0, LEADERBOARD_LIMIT).map(toEntry);
+      // Sent separately only when it is past the cut; inside the list it is
+      // already there, and sending it twice would draw it twice.
+      const self =
+        selfIndex >= LEADERBOARD_LIMIT ? toEntry(filtered[selfIndex], selfIndex) : null;
+
+      return { entries, selfRank: selfIndex < 0 ? null : selfIndex + 1, self };
     };
 
     return ok({

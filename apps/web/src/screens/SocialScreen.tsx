@@ -114,7 +114,7 @@ export function SocialScreen({ onHome }: Props) {
         <button className="icon-btn" onClick={onHome} aria-label="Back to menu">
           ‹
         </button>
-        <span className="topbar-title">Weekly</span>
+        <span className="topbar-title">Leaderboard</span>
         <div className="coin-pill">◆ {progress.profile?.coins.toLocaleString() ?? '—'}</div>
       </header>
 

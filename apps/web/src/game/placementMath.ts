@@ -69,7 +69,7 @@ export interface GrabOffset {
  * memory. Precise pointers get no lift at all — an arrow hides nothing, and a
  * piece floating away from the cursor reads as broken rather than helpful.
  */
-export const TOUCH_LIFT_CELLS = 2;
+export const TOUCH_LIFT_CELLS = 3;
 
 /** Small pointer wobble is still a tap; crossing this starts drag semantics. */
 export const DRAG_THRESHOLD_PX = 8;

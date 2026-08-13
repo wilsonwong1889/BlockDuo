@@ -22,6 +22,7 @@ import {
   fetchProfile,
   removeFriend as removeFriendRequest,
 } from './api';
+import { shouldDiscardPendingClassic } from './retryPolicy';
 
 interface ProgressContextValue {
   profile: ProgressProfile | null;
@@ -63,8 +64,19 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
         removePendingClassic(pending);
         setProfile(result.profile);
       } catch (error) {
-        // A rejected transcript cannot become valid by retrying and should not
-        // block newer rewards behind it. Network/server failures stay queued.
+        // A rejected legacy transcript cannot become valid by retrying. Keep a
+        // version-tagged one across a temporary Worker rollback, though: an
+        // older verifier does not understand its opening-hand rules yet.
+        if (
+          error instanceof Error &&
+          'status' in error &&
+          typeof error.status === 'number' &&
+          shouldDiscardPendingClassic(pending.seed, error.status)
+        ) {
+          removePendingClassic(pending);
+          continue;
+        }
+        // Continue so one retryable claim never blocks later completed games.
         if (
           error instanceof Error &&
           'status' in error &&
@@ -72,7 +84,6 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
           error.status >= 400 &&
           error.status < 500
         ) {
-          removePendingClassic(pending);
           continue;
         }
         break;

@@ -7,15 +7,53 @@ import {
   isEmpty,
   place,
 } from './board.js';
-import { dealHand, HAND_SIZE } from './deal.js';
+import { dealHand, dealOpeningHand, HAND_SIZE } from './deal.js';
 import { getPiece, hasPiece } from './pieces.js';
 import { randomSeed } from './rng.js';
 import { clearScore, SCORING, streakMultiplier } from './scoring.js';
 import type { ApplyResult, GameEvent, GameState, Move } from './types.js';
 
-export function newGame(seed: number = randomSeed()): GameState {
+/**
+ * The seed also carries the rules version used to create the opening hand.
+ *
+ * Seeds 0..2^32-1 are the original rules and must never change: saved games and
+ * server-verified Classic transcripts contain only their seed and moves. The
+ * next 32-bit range opts into the setup-friendly opening while retaining a
+ * normal 32-bit PRNG state underneath.
+ */
+export const GAME_SEED_RANGE = 0x1_0000_0000;
+export const LEGACY_GAME_RULES = 0;
+export const OPENING_ASSIST_GAME_RULES = 1;
+export const CURRENT_GAME_RULES = OPENING_ASSIST_GAME_RULES;
+export const MAX_GAME_SEED = GAME_SEED_RANGE * (CURRENT_GAME_RULES + 1) - 1;
+
+export function gameSeed(rngSeed: number, rules = CURRENT_GAME_RULES): number {
+  if (!Number.isInteger(rngSeed) || rngSeed < 0 || rngSeed >= GAME_SEED_RANGE) {
+    throw new RangeError('PRNG seed must be an unsigned 32-bit integer');
+  }
+  if (!Number.isInteger(rules) || rules < LEGACY_GAME_RULES || rules > CURRENT_GAME_RULES) {
+    throw new RangeError('Unsupported game rules version');
+  }
+  return rules * GAME_SEED_RANGE + rngSeed;
+}
+
+export function gameRules(seed: number): number {
+  return Math.floor(seed / GAME_SEED_RANGE);
+}
+
+export function isSupportedGameSeed(seed: number): boolean {
+  return Number.isSafeInteger(seed) && seed >= 0 && seed <= MAX_GAME_SEED;
+}
+
+export function newGame(seed: number = gameSeed(randomSeed())): GameState {
+  if (!isSupportedGameSeed(seed)) throw new RangeError('Unsupported game seed');
   const board = emptyBoard();
-  const { hand, rng } = dealHand(seed, board);
+  const rules = gameRules(seed);
+  const initialRng = seed - rules * GAME_SEED_RANGE;
+  const { hand, rng } =
+    rules === OPENING_ASSIST_GAME_RULES
+      ? dealOpeningHand(initialRng, board)
+      : dealHand(initialRng, board);
   return {
     board,
     hand,

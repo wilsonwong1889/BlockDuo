@@ -1,6 +1,7 @@
 import type { Clears } from './board.js';
 import type { CoinReward } from './progression.js';
 import type { WireGameState } from './serde.js';
+import type { GameEvent } from './types.js';
 
 /**
  * The duo wire protocol.
@@ -79,6 +80,11 @@ export type ServerMessage =
       clears: Clears | null;
       scoreDelta: number;
       perfect: boolean;
+      /**
+       * Exact authoritative events keep partner feedback identical to local play.
+       * Optional while older room Workers can still be serving an in-flight game.
+       */
+      events?: GameEvent[];
       snapshot: RoomSnapshot;
     }
   | { t: 'rejected'; seq: number; reason: string; snapshot: RoomSnapshot }

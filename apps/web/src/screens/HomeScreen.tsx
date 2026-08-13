@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { isMuted, setMuted } from '../audio/sfx';
+import { isMuted, setMuted, unlockAudio } from '../audio/sfx';
 import { useProgress } from '../progress/ProgressContext';
 import { loadBest, saveMuted } from '../storage';
 
@@ -17,8 +17,19 @@ export function HomeScreen({ onClassic, onDuo, onSocial }: Props) {
   const toggleSound = () => {
     const next = !muted;
     setMuted(next);
+    if (!next) unlockAudio();
     saveMuted(next);
     setMutedState(next);
+  };
+
+  const startClassic = () => {
+    unlockAudio();
+    onClassic();
+  };
+
+  const startDuo = () => {
+    unlockAudio();
+    onDuo();
   };
 
   return (
@@ -44,10 +55,10 @@ export function HomeScreen({ onClassic, onDuo, onSocial }: Props) {
       </button>
 
       <div className="home-actions">
-        <button className="btn primary big" onClick={onClassic}>
+        <button className="btn primary big" onClick={startClassic}>
           Play classic
         </button>
-        <button className="btn big" onClick={onDuo}>
+        <button className="btn big" onClick={startDuo}>
           Play duo
           <span className="btn-sub">Two players, one board, live</span>
         </button>
@@ -67,6 +78,7 @@ export function HomeScreen({ onClassic, onDuo, onSocial }: Props) {
           <li>Nothing falls after a clear — the holes you leave are permanent.</li>
           <li>Clear on consecutive turns to build a streak multiplier.</li>
           <li>You get three pieces at a time; a new set arrives when all three are used.</li>
+          <li>New games begin with a hand chosen to make early line-building friendlier.</li>
           <li>The game ends when none of your remaining pieces fit anywhere.</li>
           <li>
             A finished score becomes coins 1:1, with +0.25× every 25 pieces survived (up to

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { boardFromString, emptyBoard } from '../src/board.js';
-import { HAND_SIZE, dealHand, handIsPlayable } from '../src/deal.js';
+import {
+  HAND_SIZE,
+  OPENING_HAND_CANDIDATES,
+  dealHand,
+  dealOpeningHand,
+  handIsPlayable,
+  openingLinePotential,
+} from '../src/deal.js';
 import { hasPiece } from '../src/pieces.js';
 
 /** Every cell filled except one isolated hole at (7,7) — only a 1x1 can be played. */
@@ -128,5 +135,50 @@ describe('deal weighting', () => {
     }
     expect(big).toBeGreaterThan(0);
     expect(domino).toBeGreaterThan(big * 3);
+  });
+});
+
+describe('opening hand assist', () => {
+  it('is deterministic and consumes a fixed set of ordinary candidate deals', () => {
+    const board = emptyBoard();
+    const assisted = dealOpeningHand(12345, board);
+    expect(assisted).toEqual(dealOpeningHand(12345, board));
+
+    let rng = 12345;
+    for (let i = 0; i < OPENING_HAND_CANDIDATES; i++) {
+      rng = dealHand(rng, board).rng;
+    }
+    expect(assisted.rng).toBe(rng);
+  });
+
+  it('materially improves early line setup across many seeds', () => {
+    const board = emptyBoard();
+    let ordinaryPotential = 0;
+    let assistedPotential = 0;
+
+    for (let seed = 0; seed < 1_000; seed++) {
+      ordinaryPotential += openingLinePotential(dealHand(seed, board).hand);
+      assistedPotential += openingLinePotential(dealOpeningHand(seed, board).hand);
+    }
+
+    // The small candidate choice raises average one-line coverage by about 16%
+    // without changing the piece bag or guaranteeing a particular hand.
+    expect(assistedPotential).toBeGreaterThan(ordinaryPotential * 1.12);
+  });
+
+  it('remains a nudge rather than guaranteeing a complete line', () => {
+    const result = dealOpeningHand(23, emptyBoard());
+    expect(openingLinePotential(result.hand)).toBeLessThan(8);
+  });
+
+  it('does not alter the legacy deal path used by saved games', () => {
+    expect(dealHand(7, emptyBoard())).toEqual({
+      hand: [
+        { pieceId: '1x1', color: 1 },
+        { pieceId: 'BC-180', color: 5 },
+        { pieceId: 'L-90', color: 3 },
+      ],
+      rng: -1895507003,
+    });
   });
 });

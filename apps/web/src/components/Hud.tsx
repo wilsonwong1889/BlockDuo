@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { streakMultiplier } from '@blokduo/engine';
+import { chainTier } from '../game/feedback';
 
 /**
  * Counts the displayed score up to the real one instead of snapping.
@@ -19,6 +21,12 @@ function useCountUp(target: number, ms = 420) {
 
   useEffect(() => {
     if (shownRef.current === target) return;
+
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      shownRef.current = target;
+      setShown(target);
+      return;
+    }
 
     const from = shownRef.current;
     const start = performance.now();
@@ -62,6 +70,16 @@ interface Props {
 export function Hud({ score, best, streak, label = 'Score' }: Props) {
   const shown = useCountUp(score);
   const beatingBest = best !== undefined && score > 0 && score >= best;
+  const nextMultiplier = streakMultiplier(streak).toFixed(1);
+  const fullStreakCopy =
+    streak === 0
+      ? 'Clear a line to start a streak'
+      : `${streak === 1 ? 'Chain started' : `Combo ×${streak}`} · next ×${nextMultiplier}`;
+  const compactStreakCopy = streak === 0 ? 'Start chain' : `${streak} · ${nextMultiplier}×`;
+  const accessibleStreakCopy =
+    streak === 0
+      ? fullStreakCopy
+      : `${streak === 1 ? 'Chain started' : `Combo ${streak}`}. The next line clear scores ${nextMultiplier} times points.`;
 
   return (
     <div className="hud">
@@ -70,19 +88,28 @@ export function Hud({ score, best, streak, label = 'Score' }: Props) {
         <span className={`hud-score${beatingBest ? ' record' : ''}`}>{shown.toLocaleString()}</span>
       </div>
 
-      <div className={`streak${streak > 0 ? ' active' : ''}`} aria-live="polite">
-        {streak > 0 ? (
-          <>
-            <span className="streak-flame" aria-hidden>
-              ★
-            </span>
-            <span>
-              {streak} in a row · ×{Math.min(1 + 0.5 * streak, 4).toFixed(1)}
-            </span>
-          </>
-        ) : (
-          <span className="streak-hint">Clear a line to start a streak</span>
+      <div
+        className={`streak${streak > 0 ? ' active' : ''}`}
+        data-chain-tier={chainTier(streak)}
+        aria-live="polite"
+        aria-atomic="true"
+        title={accessibleStreakCopy}
+      >
+        {streak > 0 && (
+          <span className="streak-flame" aria-hidden>
+            ★
+          </span>
         )}
+        <span className={`streak-copy${streak === 0 ? ' streak-hint' : ''}`} aria-hidden>
+          {fullStreakCopy}
+        </span>
+        <span
+          className={`streak-copy-compact${streak === 0 ? ' streak-hint' : ''}`}
+          aria-hidden
+        >
+          {compactStreakCopy}
+        </span>
+        <span className="streak-accessible">{accessibleStreakCopy}</span>
       </div>
 
       <div className="hud-block right">

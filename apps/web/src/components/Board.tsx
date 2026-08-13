@@ -23,6 +23,7 @@ const BoardView = forwardRef<HTMLDivElement, Props>(function Board(
   ref,
 ) {
   const { stride, cell, gap } = geom;
+  const activeClear = clearFx[clearFx.length - 1];
 
   const previewSet = new Set(preview?.cells ?? []);
   const clearRowSet = new Set(preview?.clearRows ?? []);
@@ -75,7 +76,7 @@ const BoardView = forwardRef<HTMLDivElement, Props>(function Board(
         fx.cells.map(({ index, color }) => (
           <div
             key={`${fx.id}-${index}`}
-            className="cell clearing"
+            className={`cell clearing clear-tier-${fx.tier}`}
             style={{
               left: (index % SIZE) * stride,
               top: Math.floor(index / SIZE) * stride,
@@ -88,10 +89,21 @@ const BoardView = forwardRef<HTMLDivElement, Props>(function Board(
         )),
       )}
 
+      {/* One compositor-friendly ring carries combo intensity for the whole
+          clear. Per-cell glow filters multiply quickly on a full line. */}
+      {activeClear && (
+        <div
+          key={activeClear.id}
+          className="board-clear-ring"
+          data-chain-tier={activeClear.tier}
+          aria-hidden
+        />
+      )}
+
       {floats.map((f) => (
         <div
           key={f.id}
-          className={`float float-${f.kind}`}
+          className={`float float-${f.kind} combo-tier-${f.tier}`}
           style={{ left: f.col * stride + cell / 2, top: f.row * stride }}
         >
           {f.text}

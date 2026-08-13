@@ -4,6 +4,7 @@ import {
   applyMove,
   coinReward,
   decodeState,
+  gameSeed,
   getPiece,
   legalAnchors,
   newGame,
@@ -354,6 +355,19 @@ describe('classic progression claims', () => {
     expect(illegal.body.error).toMatch(/illegal move/i);
 
     expect(await getProfile(player)).toMatchObject({ coins: 0, gamesPlayed: 0 });
+  });
+
+  it('accepts and verifies transcripts using the assisted opening rules', async () => {
+    const player = await createPlayer('Assisted claimant');
+    const game = completedClassic(gameSeed(0x0a55157));
+    const claim = await post<ClaimResult>('/api/progress/classic', {
+      ...player.identity,
+      seed: game.state.seed,
+      moves: game.moves,
+    });
+
+    expect(claim.response.status).toBe(200);
+    expect(claim.body.reward).toEqual(coinReward(game.state.score, game.state.moveCount));
   });
 });
 

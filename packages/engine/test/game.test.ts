@@ -8,7 +8,18 @@ import {
   hasAnyPlacement,
   legalAnchors,
 } from '../src/board.js';
-import { applyMove, isGameOver, newGame, replay } from '../src/game.js';
+import {
+  GAME_SEED_RANGE,
+  MAX_GAME_SEED,
+  OPENING_ASSIST_GAME_RULES,
+  applyMove,
+  gameRules,
+  gameSeed,
+  isGameOver,
+  isSupportedGameSeed,
+  newGame,
+  replay,
+} from '../src/game.js';
 import { getPiece } from '../src/pieces.js';
 import { nextInt } from '../src/rng.js';
 import { SCORING } from '../src/scoring.js';
@@ -67,9 +78,36 @@ describe('newGame', () => {
     expect(g.hand.filter(Boolean)).toHaveLength(3);
   });
 
+  it('uses the assisted rules for newly generated Classic and Duo games', () => {
+    expect(gameRules(newGame().seed)).toBe(OPENING_ASSIST_GAME_RULES);
+  });
+
   it('is fully determined by its seed', () => {
     expect(newGame(7)).toEqual(newGame(7));
     expect(newGame(7).hand).not.toEqual(newGame(8).hand);
+  });
+
+  it('versions assisted openings in the seed while preserving legacy replays', () => {
+    const legacy = newGame(7);
+    const assistedSeed = gameSeed(7);
+    const assisted = newGame(assistedSeed);
+
+    expect(assistedSeed).toBe(GAME_SEED_RANGE + 7);
+    expect(gameRules(assisted.seed)).toBe(OPENING_ASSIST_GAME_RULES);
+    expect(assisted.hand).not.toEqual(legacy.hand);
+    expect(replay(7, [])).toEqual(legacy);
+    expect(replay(assistedSeed, [])).toEqual(assisted);
+  });
+
+  it('only accepts the declared seed-version ranges', () => {
+    expect(isSupportedGameSeed(0)).toBe(true);
+    expect(isSupportedGameSeed(0xffffffff)).toBe(true);
+    expect(isSupportedGameSeed(gameSeed(0))).toBe(true);
+    expect(isSupportedGameSeed(MAX_GAME_SEED)).toBe(true);
+    expect(isSupportedGameSeed(-1)).toBe(false);
+    expect(isSupportedGameSeed(MAX_GAME_SEED + 1)).toBe(false);
+    expect(isSupportedGameSeed(1.5)).toBe(false);
+    expect(() => newGame(MAX_GAME_SEED + 1)).toThrow(/Unsupported game seed/);
   });
 });
 
@@ -309,6 +347,17 @@ describe('determinism', () => {
       moves.push(m);
     });
     expect(() => replay(31338, moves)).toThrow(/Illegal move/);
+  });
+
+  it('replays an assisted opening and all later refills identically', () => {
+    const seed = gameSeed(2024);
+    const moves: Move[] = [];
+    const played = playRandomGame(seed, (_before, move) => {
+      moves.push(move);
+    });
+    const replayed = replay(seed, moves);
+
+    expect(replayed).toEqual(played);
   });
 });
 

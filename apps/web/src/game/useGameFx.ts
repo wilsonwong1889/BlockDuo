@@ -3,6 +3,12 @@ import type { GameEvent, GameState, Move } from '@blokduo/engine';
 import * as sfx from '../audio/sfx';
 import { haptic } from '../native';
 import { buildClearFx, fxId, type ClearFx, type FloatFx } from './fx';
+import {
+  chainTier,
+  feedbackFromEvents,
+  feedbackText,
+  type MoveFeedback,
+} from './feedback';
 
 /** Shared animation and feedback pipeline for Classic and Duo moves. */
 export function useGameFx() {
@@ -27,13 +33,15 @@ export function useGameFx() {
   }, []);
 
   const showClear = useCallback(
-    (before: GameState, move: Move, cellIndices: number[], lines: number, points: number) => {
+    (before: GameState, move: Move, cellIndices: number[], feedback: MoveFeedback) => {
+      const tier = chainTier(feedback.streakAfter);
       const effect = buildClearFx(
         before.board,
         before.hand[move.slot],
         move,
         cellIndices,
-        lines,
+        feedback.lines,
+        tier,
       );
       setClearFx((list) => [...list, effect]);
       schedule(
@@ -48,8 +56,9 @@ export function useGameFx() {
           id: floatId,
           row: move.row,
           col: move.col,
-          text: `+${points}`,
-          kind: lines > 1 ? 'combo' : 'score',
+          text: feedbackText(feedback),
+          kind: feedback.streakAfter >= 2 ? 'chain' : feedback.lines > 1 ? 'burst' : 'score',
+          tier,
         },
       ]);
       schedule(
@@ -57,18 +66,17 @@ export function useGameFx() {
         900,
       );
 
-      setShake(lines);
+      setShake(Math.max(feedback.lines, tier >= 3 ? 2 : 1));
       schedule(() => setShake(0), 340);
     },
     [schedule],
   );
 
   const showPerfect = useCallback(() => {
-    sfx.playPerfect();
     const id = fxId();
     setFloats((list) => [
       ...list,
-      { id, row: 3, col: 2, text: 'PERFECT!', kind: 'perfect' },
+      { id, row: 3, col: 2, text: 'PERFECT!', kind: 'perfect', tier: 4 },
     ]);
     schedule(() => setFloats((list) => list.filter((item) => item.id !== id)), 1400);
   }, [schedule]);
@@ -78,22 +86,39 @@ export function useGameFx() {
   }, [schedule]);
 
   const playMove = useCallback(
-    (before: GameState, events: GameEvent[], move: Move, gameOverSound: boolean) => {
-      let clearedLines = 0;
+    (
+      before: GameState,
+      events: GameEvent[],
+      move: Move,
+      options: { gameOverSound?: boolean; hapticFeedback?: boolean } = {},
+    ) => {
+      const { gameOverSound = false, hapticFeedback = true } = options;
+      const feedback = feedbackFromEvents(before, events);
+
+      if (feedback.lines > 0) {
+        sfx.playClear(feedback.lines, feedback.streakAfter);
+        if (hapticFeedback) {
+          void haptic(
+            feedback.perfectPoints > 0 || feedback.lines > 1 || feedback.streakAfter >= 2
+              ? 'combo'
+              : 'clear',
+          );
+        }
+      } else {
+        sfx.playPlace();
+        if (hapticFeedback) void haptic('place');
+      }
+
+      if (feedback.perfectPoints > 0) sfx.playPerfect();
 
       for (const event of events) {
         switch (event.type) {
           case 'placed':
-            sfx.playPlace();
-            void haptic('place');
             break;
           case 'cleared':
-            clearedLines = event.rows.length + event.cols.length;
-            showClear(before, move, event.cellIndices, clearedLines, event.points);
+            showClear(before, move, event.cellIndices, feedback);
             break;
           case 'streak':
-            sfx.playClear(clearedLines || 1, event.streak - 1);
-            void haptic(clearedLines > 1 ? 'combo' : 'clear');
             break;
           case 'perfect':
             showPerfect();
@@ -121,8 +146,6 @@ export function useGameFx() {
     floats,
     shake,
     playMove,
-    showClear,
-    showPerfect,
     playGameOver,
     resetFx,
   };

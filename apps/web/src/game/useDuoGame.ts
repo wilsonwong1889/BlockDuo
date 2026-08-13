@@ -12,6 +12,7 @@ import * as sfx from '../audio/sfx';
 import { roomSocketUrl } from '../net/config';
 import { announceProgressChange, fetchRoomTicket } from '../progress/api';
 import type { ClearFx, FloatFx } from './fx';
+import { eventsForAppliedFeedback } from './feedback';
 import { useGameFx } from './useGameFx';
 
 export type DuoStatus = 'connecting' | 'live' | 'reconnecting' | 'closed' | 'error';
@@ -47,8 +48,6 @@ export function useDuoGame(code: string, name: string): DuoGame {
     floats,
     shake,
     playMove,
-    showClear,
-    showPerfect,
     playGameOver,
   } = useGameFx();
 
@@ -180,19 +179,15 @@ export function useDuoGame(code: string, name: string): DuoGame {
           // My own move already played its sound and animation optimistically.
           // Replaying it here would double every effect.
           if (msg.by !== seatRef.current && before) {
-            sfx.playPlace();
-            if (msg.clears) {
-              const lines = msg.clears.rows.length + msg.clears.cols.length;
-              showClear(
-                before,
-                { slot: msg.slot, row: msg.row, col: msg.col },
-                msg.clears.cellIndices,
-                lines,
-                msg.scoreDelta,
-              );
-              sfx.playClear(lines, decodeState(msg.snapshot.game).streak - 1);
-            }
-            if (msg.perfect) showPerfect();
+            const after = decodeState(msg.snapshot.game);
+            playMove(
+              before,
+              eventsForAppliedFeedback(before, after, msg),
+              { slot: msg.slot, row: msg.row, col: msg.col },
+              // Partner clears keep their shared sound/visual celebration, but
+              // only the person who placed a piece gets device vibration.
+              { hapticFeedback: false },
+            );
           }
           adoptSnapshot(msg.snapshot);
           if (msg.snapshot.turn === seatRef.current && msg.snapshot.phase === 'playing') {
@@ -249,7 +244,7 @@ export function useDuoGame(code: string, name: string): DuoGame {
       if (ws.current === socket) ws.current = null;
       socket?.close(1000, 'leaving');
     };
-  }, [code, name, playGameOver, schedule, showClear, showPerfect]);
+  }, [code, name, playGameOver, playMove, schedule]);
 
   // ------------------------------------------------------------------- actions
 
@@ -293,7 +288,7 @@ export function useDuoGame(code: string, name: string): DuoGame {
       // the game feels local even though the server decides.
       optimisticRef.current = res.result.state;
       setOptimistic(res.result.state);
-      playMove(current, res.result.events, move, false);
+      playMove(current, res.result.events, move);
       return true;
     },
     [playMove],

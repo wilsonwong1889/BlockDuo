@@ -90,7 +90,7 @@ export function useClassicGame(): ClassicGame {
     stateRef.current = next;
     setState(next);
 
-    playMove(current, events, move, true);
+    playMove(current, events, move, { gameOverSound: true });
 
     setBest((b) => {
       if (next.score <= b) return b;

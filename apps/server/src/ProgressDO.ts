@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
   coinReward,
+  isSupportedGameSeed,
   replay,
   weekWindow,
   type ClaimResult,
@@ -472,7 +473,7 @@ function normalizeFriendCode(value: unknown): string {
 }
 
 function validSeed(seed: number): boolean {
-  return Number.isInteger(seed) && seed >= 0 && seed <= 0xffffffff;
+  return isSupportedGameSeed(seed);
 }
 
 function validMove(move: Move): boolean {

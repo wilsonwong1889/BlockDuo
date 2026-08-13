@@ -1,4 +1,5 @@
 import { getPiece, SIZE, type Board, type HandSlot, type Move } from '@blokduo/engine';
+import type { ChainTier } from './feedback';
 
 /**
  * Visual effects shared by classic and duo.
@@ -14,6 +15,7 @@ export interface ClearFx {
   id: number;
   cells: Array<{ index: number; color: number }>;
   lines: number;
+  tier: ChainTier;
 }
 
 export interface FloatFx {
@@ -21,7 +23,8 @@ export interface FloatFx {
   row: number;
   col: number;
   text: string;
-  kind: 'score' | 'combo' | 'perfect';
+  kind: 'score' | 'burst' | 'chain' | 'perfect';
+  tier: ChainTier;
 }
 
 let nextId = 0;
@@ -54,10 +57,12 @@ export function buildClearFx(
   move: Move,
   cellIndices: number[],
   lines: number,
+  tier: ChainTier = 0,
 ): ClearFx {
   return {
     id: fxId(),
     lines,
+    tier,
     cells: cellIndices.map((index) => ({
       index,
       color: colorOfCell(boardBefore, played, move, index),

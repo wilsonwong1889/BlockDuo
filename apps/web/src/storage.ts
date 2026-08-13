@@ -140,13 +140,21 @@ export function loadClassicGame(): SavedClassicGame | null {
 export const loadPendingClassic = () =>
   read<PendingClassicClaim[]>(KEYS.pendingClassic, []);
 
+export function appendPendingClassic(
+  pending: PendingClassicClaim[],
+  claim: PendingClassicClaim,
+): PendingClassicClaim[] {
+  const fingerprint = JSON.stringify([claim.seed, claim.moves]);
+  if (pending.some((item) => JSON.stringify([item.seed, item.moves]) === fingerprint)) {
+    return pending;
+  }
+  return [...pending, claim];
+}
+
 export function queuePendingClassic(claim: PendingClassicClaim) {
   const pending = loadPendingClassic();
-  const fingerprint = JSON.stringify([claim.seed, claim.moves]);
-  if (!pending.some((item) => JSON.stringify([item.seed, item.moves]) === fingerprint)) {
-    pending.push(claim);
-    write(KEYS.pendingClassic, pending.slice(-12));
-  }
+  const next = appendPendingClassic(pending, claim);
+  if (next !== pending) write(KEYS.pendingClassic, next);
 }
 
 export function removePendingClassic(claim: PendingClassicClaim) {

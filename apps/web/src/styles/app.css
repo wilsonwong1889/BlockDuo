@@ -117,7 +117,7 @@ button {
 
 .hud {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 0.5rem;
   width: min(100%, 30rem);
@@ -126,6 +126,7 @@ button {
 .hud-block {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   line-height: 1.05;
 }
 
@@ -160,27 +161,75 @@ button {
 }
 
 .streak {
+  --chain-color: var(--muted);
+  --chain-glow: transparent;
+  --chain-accent: rgba(255, 255, 255, 0.05);
   display: flex;
   align-items: center;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
   gap: 0.35rem;
   padding: 0.3rem 0.7rem;
   border-radius: 999px;
   font-size: 0.75rem;
   font-weight: 700;
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--muted);
+  background: var(--chain-accent);
+  color: var(--chain-color);
   white-space: nowrap;
-  transition: all 0.25s ease;
+  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .streak.active {
-  background: linear-gradient(135deg, #f97316, #f43f5e);
-  color: #fff;
-  box-shadow: 0 0 20px rgba(249, 115, 22, 0.4);
+  color: var(--chain-color);
+  box-shadow: 0 0 20px var(--chain-glow);
+}
+
+[data-chain-tier='1'] {
+  --chain-color: #d9fff5;
+  --chain-glow: rgba(45, 212, 191, 0.38);
+  --chain-accent: linear-gradient(135deg, rgba(6, 182, 212, 0.72), rgba(16, 185, 129, 0.72));
+}
+
+[data-chain-tier='2'] {
+  --chain-color: #fff7c2;
+  --chain-glow: rgba(250, 204, 21, 0.42);
+  --chain-accent: linear-gradient(135deg, rgba(16, 185, 129, 0.78), rgba(245, 158, 11, 0.82));
+}
+
+[data-chain-tier='3'] {
+  --chain-color: #fff1e6;
+  --chain-glow: rgba(249, 115, 22, 0.52);
+  --chain-accent: linear-gradient(135deg, rgba(245, 158, 11, 0.88), rgba(244, 63, 94, 0.9));
+}
+
+[data-chain-tier='4'] {
+  --chain-color: #fff;
+  --chain-glow: rgba(216, 180, 254, 0.72);
+  --chain-accent: linear-gradient(135deg, #7c3aed, #ec4899 56%, #fff);
 }
 
 .streak-hint {
   opacity: 0.7;
+}
+
+.streak-copy-compact {
+  display: none;
+}
+
+/* Keep the full status in the live region even when a narrow phone swaps in
+   the compact visual copy. */
+.streak-accessible {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 .streak-flame {
@@ -213,6 +262,37 @@ button {
     0 24px 60px rgba(0, 0, 0, 0.45);
   touch-action: none;
   transition: opacity 0.35s ease;
+}
+
+.board-clear-ring {
+  position: absolute;
+  inset: -4px;
+  border: 2px solid var(--chain-color, var(--accent));
+  border-radius: calc(var(--radius) + 4px);
+  pointer-events: none;
+  z-index: 4;
+  box-shadow: 0 0 22px var(--chain-glow, rgba(110, 231, 255, 0.28));
+  animation: boardClearPulse 0.52s cubic-bezier(0.2, 0.85, 0.25, 1) both;
+}
+
+.board-clear-ring[data-chain-tier='3'],
+.board-clear-ring[data-chain-tier='4'] {
+  border-width: 3px;
+}
+
+@keyframes boardClearPulse {
+  0% {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  28% {
+    opacity: 0.95;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.035);
+  }
 }
 
 .board.dimmed {
@@ -274,9 +354,30 @@ button {
 }
 
 .cell.clearing {
+  --clear-flash: #fff;
+  background: linear-gradient(160deg, var(--block-light), var(--block) 45%, var(--block-dark));
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.25);
   animation: clearOut 0.42s cubic-bezier(0.3, 0, 0.2, 1) forwards;
   pointer-events: none;
   z-index: 3;
+}
+
+.cell.clearing.clear-tier-1 {
+  --clear-flash: #5eead4;
+}
+
+.cell.clearing.clear-tier-2 {
+  --clear-flash: #fde047;
+}
+
+.cell.clearing.clear-tier-3 {
+  --clear-flash: #fb7185;
+}
+
+.cell.clearing.clear-tier-4 {
+  --clear-flash: #e9d5ff;
 }
 
 @keyframes clearOut {
@@ -287,7 +388,7 @@ button {
   35% {
     transform: scale(1.22);
     opacity: 1;
-    filter: brightness(2);
+    background: var(--clear-flash);
   }
   100% {
     transform: scale(0.2);
@@ -340,9 +441,27 @@ button {
   font-size: 1.15rem;
 }
 
-.float-combo {
+.float-burst,
+.float-chain {
   color: #fbbf24;
   font-size: 1.6rem;
+  white-space: nowrap;
+  letter-spacing: 0.025em;
+}
+
+.float-chain.combo-tier-2 {
+  color: #fde047;
+}
+
+.float-chain.combo-tier-3 {
+  color: #fb7185;
+  font-size: 1.75rem;
+}
+
+.float-chain.combo-tier-4 {
+  color: #f5e9ff;
+  font-size: 1.9rem;
+  text-shadow: 0 0 16px rgba(216, 180, 254, 0.95), 0 2px 10px rgba(0, 0, 0, 0.6);
 }
 
 .float-perfect {
@@ -1225,6 +1344,34 @@ button {
 
 /* --------------------------------------------------------------- a11y/mo. */
 
+@media (max-width: 24rem) {
+  .hud {
+    gap: 0.3rem;
+  }
+
+  .hud-score {
+    font-size: clamp(1.45rem, 8vw, 2rem);
+  }
+
+  .hud-best {
+    font-size: 0.95rem;
+  }
+
+  .streak {
+    gap: 0.2rem;
+    padding: 0.25rem 0.45rem;
+    font-size: 0.68rem;
+  }
+
+  .streak-copy {
+    display: none;
+  }
+
+  .streak-copy-compact {
+    display: inline;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -1232,6 +1379,20 @@ button {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  /* Preserve clear feedback without expansion, pulsing, or per-cell motion. */
+  .board-clear-ring {
+    opacity: 0.8;
+    transform: none;
+    box-shadow: none;
+    animation: none !important;
+  }
+
+  .cell.clearing {
+    opacity: 0.42;
+    background: var(--clear-flash);
+    animation: none !important;
   }
 }
 

@@ -1,7 +1,9 @@
 import { SELF } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
+  applyMove,
   decodeState,
+  encodeState,
   getPiece,
   legalAnchors,
   type RoomSnapshot,
@@ -203,14 +205,20 @@ describe('turn taking', () => {
     const snap = b.latestSnapshot()!;
     const first = snap.turn === 0 ? a : b;
     const second = snap.turn === 0 ? b : a;
+    const move = legalMove(snap);
+    const expected = applyMove(decodeState(snap.game), move);
+    expect(expected.ok).toBe(true);
 
-    first.send({ t: 'place', seq: 1, ...legalMove(snap) });
+    first.send({ t: 'place', seq: 1, ...move });
     const applied = await second.waitFor('applied');
 
     expect(applied.by).toBe(snap.turn);
     expect(applied.scoreDelta).toBeGreaterThan(0);
     expect(applied.snapshot.turn).not.toBe(snap.turn);
     expect(applied.snapshot.version).toBe(snap.version + 1);
+    if (!expected.ok) throw new Error('expected test move to be legal');
+    expect(applied.events).toEqual(expected.result.events);
+    expect(applied.snapshot.game).toEqual(encodeState(expected.result.state));
 
     // Both players are told the same thing.
     const mirrored = await first.waitFor('applied');

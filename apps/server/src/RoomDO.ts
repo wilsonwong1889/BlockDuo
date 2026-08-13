@@ -408,6 +408,7 @@ export class RoomDO extends DurableObject<Env> {
           : null,
       scoreDelta: after.score - before.score,
       perfect,
+      events,
       snapshot: this.snapshot(room),
     });
 

@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
-import { setMuted } from './audio/sfx';
+import { setMuted, unlockAudio } from './audio/sfx';
 import { initNative, isNative } from './native';
 import { ProgressProvider } from './progress/ProgressContext';
 import { loadMuted } from './storage';
@@ -9,6 +9,13 @@ import './styles/app.css';
 
 setMuted(loadMuted());
 void initNative();
+
+// Direct invite links skip the Home and Duo lobby buttons. Listen for any real
+// user activation so their WebSocket-driven sounds can play too. Keeping these
+// listeners installed also lets a context suspended while backgrounded resume
+// on the first interaction after returning.
+window.addEventListener('pointerdown', unlockAudio, { capture: true, passive: true });
+window.addEventListener('keydown', unlockAudio, { capture: true });
 
 // Classic mode works with no connection once the app has been opened once.
 // Skipped inside the native shell, which is already serving from local files.

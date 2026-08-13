@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { isValidRoomCode } from '@blokduo/engine';
+import { unlockAudio } from '../audio/sfx';
 import { apiUrl } from '../net/config';
 import { loadName, saveName } from '../storage';
 
@@ -17,6 +18,7 @@ export function DuoLobby({ onEnter, onHome }: Props) {
   const displayName = name.trim() || 'Player';
 
   const create = async () => {
+    unlockAudio();
     setBusy('create');
     setError(null);
     try {
@@ -32,6 +34,7 @@ export function DuoLobby({ onEnter, onHome }: Props) {
   };
 
   const join = async () => {
+    unlockAudio();
     const wanted = code.trim().toUpperCase();
     if (!isValidRoomCode(wanted)) {
       setError('Room codes are six letters and numbers.');

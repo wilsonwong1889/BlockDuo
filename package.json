@@ -8,7 +8,8 @@
     "apps/*"
   ],
   "scripts": {
-    "test": "npm run test --workspace=@blokduo/engine",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
     "dev": "npm run dev --workspace=@blokduo/web",
     "build": "npm run build --workspace=@blokduo/web",
     "dev:server": "npm run dev --workspace=@blokduo/server"

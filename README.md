@@ -54,13 +54,19 @@ npx wrangler dev --var TURN_MS:900000
 npm test
 ```
 
-That runs the engine suite (67 tests, including invariant checks across 40 full
-random games). The server's 16 integration tests drive two live WebSockets
-against a real Durable Object, including the alarm-driven turn timeout:
+That runs every workspace: the engine's rules and invariant checks across 40
+full random games, the web app's pure-logic suites, and the server's integration
+tests, which drive two live WebSockets against a real Durable Object including
+the alarm-driven turn timeout. The server half boots the real `workerd` runtime,
+so it takes a few seconds where the other two are instant.
+
+One workspace on its own:
 
 ```bash
 npm run test --workspace=@blokduo/server
 ```
+
+`npm run typecheck` covers all three the same way.
 
 ### Playing against a stand-in partner
 

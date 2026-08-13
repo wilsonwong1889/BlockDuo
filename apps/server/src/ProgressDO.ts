@@ -64,6 +64,12 @@ interface RankedScore {
 /** The window a record is filed under. Weeks use their Monday's date. */
 const ALL_TIME = 'alltime';
 
+/** Set once the pre-existing weeks have been folded into the all-time window. */
+const ALL_TIME_BACKFILL_KEY = 'migration:alltime:v1';
+
+/** Durable Object storage takes at most 128 keys in one put. */
+const MAX_PUT_KEYS = 100;
+
 interface StoredClaim {
   reward: CoinReward;
   weeklyBest: boolean;
@@ -261,6 +267,8 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     if (!profile) return fail(401, 'Your player session is no longer valid');
     if (mode !== 'classic' && mode !== 'duo') return fail(400, 'Unknown leaderboard mode');
     if (scope !== 'global' && scope !== 'friends') return fail(400, 'Unknown leaderboard scope');
+
+    await this.backfillAllTime();
 
     const week = weekWindow();
     const allowed = new Set([profile.clientId, ...profile.friendIds]);
@@ -472,16 +480,56 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     for (const window of [week.key, ALL_TIME]) {
       const key = scoreKey(window, record.mode, record.id);
       const previous = await this.ctx.storage.get<RankedScore>(key);
-      const beaten =
-        !previous ||
-        previous.score < record.score ||
-        (previous.score === record.score && previous.achievedAt > record.achievedAt);
-      if (!beaten) continue;
+      if (!beats(record, previous)) continue;
       writes[key] = record;
       if (window === week.key) weeklyBest = true;
     }
 
     return { writes, weeklyBest };
+  }
+
+  /**
+   * Fold every week ever recorded into the all-time window, once.
+   *
+   * All-time records only began being written when the board was added, so a
+   * ledger with history behind it had weeks of results and a permanent board
+   * that started empty — showing an "all time" board that was a subset of this
+   * week, missing anyone who had not played since. The weekly records are the
+   * per-player bests already, so the whole history is one scan away.
+   */
+  private async backfillAllTime(): Promise<void> {
+    if (await this.ctx.storage.get(ALL_TIME_BACKFILL_KEY)) return;
+
+    await this.mutate(async () => {
+      // Re-checked under the lock: two readers can arrive together.
+      if (await this.ctx.storage.get(ALL_TIME_BACKFILL_KEY)) return;
+
+      // Existing all-time records are in the scan too, so a rerun can only
+      // confirm what is already filed rather than undo it.
+      const best = new Map<string, RankedScore>();
+      let startAfter: string | undefined;
+      for (;;) {
+        const page = await this.ctx.storage.list<RankedScore>({
+          prefix: 'score:',
+          limit: 1_000,
+          startAfter,
+        });
+        if (page.size === 0) break;
+        for (const [key, record] of page) {
+          startAfter = key;
+          if (!record?.id || (record.mode !== 'classic' && record.mode !== 'duo')) continue;
+          const target = scoreKey(ALL_TIME, record.mode, record.id);
+          if (beats(record, best.get(target))) best.set(target, record);
+        }
+        if (page.size < 1_000) break;
+      }
+
+      const entries = [...best.entries()];
+      for (let i = 0; i < entries.length; i += MAX_PUT_KEYS) {
+        await this.ctx.storage.put(Object.fromEntries(entries.slice(i, i + MAX_PUT_KEYS)));
+      }
+      await this.ctx.storage.put(ALL_TIME_BACKFILL_KEY, Date.now());
+    });
   }
 }
 
@@ -528,6 +576,13 @@ function validMove(move: Move): boolean {
     move.col >= 0 &&
     move.col <= 7
   );
+}
+
+/** Whether a candidate should take a window's slot. Equal scores keep the earlier. */
+function beats(candidate: RankedScore, incumbent: RankedScore | undefined): boolean {
+  if (!incumbent) return true;
+  if (incumbent.score !== candidate.score) return incumbent.score < candidate.score;
+  return incumbent.achievedAt > candidate.achievedAt;
 }
 
 function compareScores(a: RankedScore, b: RankedScore): number {

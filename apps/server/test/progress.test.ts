@@ -1,4 +1,4 @@
-import { SELF } from 'cloudflare:test';
+import { SELF, env, runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import {
   applyMove,
@@ -352,6 +352,65 @@ describe('progress friendships', () => {
       scope: 'friends',
     });
     expect(afterRemoval.body.weekly.entries.map((entry) => entry.name)).toEqual([alice.profile.name]);
+  });
+
+  it('lifts scores recorded before the all-time board existed onto it', async () => {
+    const player = await createPlayer(`Historic ${crypto.randomUUID().slice(0, 8)}`);
+    const game = completedClassic(gameSeed(0x0a11717));
+    await post<ClaimResult>('/api/progress/classic', {
+      ...player.identity,
+      seed: game.state.seed,
+      moves: game.moves,
+    });
+
+    // Exactly the state a ledger with history was left in: weekly records
+    // written by an older build, an all-time window that never existed, and no
+    // migration marker. The score has to reappear without being replayed.
+    const stub = env.PROGRESS.get(env.PROGRESS.idFromName('global'));
+    const removed = await runInDurableObject(stub, async (_instance, state) => {
+      await state.storage.delete('migration:alltime:v1');
+      const allTime = [...(await state.storage.list<unknown>({ prefix: 'score:alltime:' })).keys()];
+      await state.storage.delete(allTime);
+      return allTime.length;
+    });
+    expect(removed).toBeGreaterThan(0);
+
+    const board = await post<LeaderboardView>('/api/progress/leaderboard', {
+      ...player.identity,
+      mode: 'classic',
+      scope: 'global',
+    });
+
+    const mine = board.body.allTime.entries.find((entry) => entry.name === player.profile.name);
+    expect(mine).toMatchObject({
+      score: game.state.score,
+      moveCount: game.state.moveCount,
+    });
+    // All time can never be missing something this week has: it is every week.
+    for (const weekEntry of board.body.weekly.entries) {
+      expect(board.body.allTime.entries.some((entry) => entry.name === weekEntry.name)).toBe(true);
+    }
+  });
+
+  it('leaves an already-migrated ledger alone', async () => {
+    const player = await createPlayer(`Settled ${crypto.randomUUID().slice(0, 8)}`);
+    const game = completedClassic(gameSeed(0x0577ed1));
+    await post<ClaimResult>('/api/progress/classic', {
+      ...player.identity,
+      seed: game.state.seed,
+      moves: game.moves,
+    });
+
+    const read = () =>
+      post<LeaderboardView>('/api/progress/leaderboard', {
+        ...player.identity,
+        mode: 'classic',
+        scope: 'global',
+      });
+
+    const first = await read();
+    const second = await read();
+    expect(second.body.allTime.entries).toEqual(first.body.allTime.entries);
   });
 });
 

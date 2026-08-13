@@ -1,25 +1,37 @@
 import { useState } from 'react';
-import { isMuted, setMuted, unlockAudio } from '../audio/sfx';
+import { unlockAudio } from '../audio/sfx';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { SettingsPanel } from '../components/SettingsPanel';
+import { StatisticsPanel } from '../components/StatisticsPanel';
+import { updateAppSettings } from '../preferences';
 import { useProgress } from '../progress/ProgressContext';
-import { loadBest, saveMuted } from '../storage';
+import {
+  loadAppSettings,
+  loadBest,
+  loadClassicGame,
+  loadStatistics,
+  type AppSettings,
+} from '../storage';
 
 interface Props {
   onClassic: () => void;
+  onNewClassic: () => void;
   onDuo: () => void;
   onSocial: () => void;
 }
 
-export function HomeScreen({ onClassic, onDuo, onSocial }: Props) {
-  const [muted, setMutedState] = useState(isMuted());
+export function HomeScreen({ onClassic, onNewClassic, onDuo, onSocial }: Props) {
+  const [settings, setSettings] = useState(loadAppSettings);
+  const [panel, setPanel] = useState<'settings' | 'statistics' | 'new-game' | null>(null);
   const { profile } = useProgress();
   const best = loadBest();
+  const savedGame = loadClassicGame();
+  const hasSavedProgress = !!savedGame && savedGame.state.moveCount > 0;
+  const statistics = loadStatistics();
 
-  const toggleSound = () => {
-    const next = !muted;
-    setMuted(next);
-    if (!next) unlockAudio();
-    saveMuted(next);
-    setMutedState(next);
+  const changeSettings = (next: AppSettings) => {
+    setSettings(next);
+    updateAppSettings(next);
   };
 
   const startClassic = () => {
@@ -30,6 +42,11 @@ export function HomeScreen({ onClassic, onDuo, onSocial }: Props) {
   const startDuo = () => {
     unlockAudio();
     onDuo();
+  };
+
+  const startNewClassic = () => {
+    if (hasSavedProgress) setPanel('new-game');
+    else onNewClassic();
   };
 
   return (
@@ -55,9 +72,23 @@ export function HomeScreen({ onClassic, onDuo, onSocial }: Props) {
       </button>
 
       <div className="home-actions">
-        <button className="btn primary big" onClick={startClassic}>
-          Play classic
-        </button>
+        {hasSavedProgress ? (
+          <>
+            <button className="btn primary big" onClick={startClassic}>
+              Continue Classic
+              <span className="btn-sub">
+                Score {savedGame.state.score.toLocaleString()} · {savedGame.state.moveCount} pieces
+              </span>
+            </button>
+            <button className="btn" onClick={startNewClassic}>
+              New Classic game
+            </button>
+          </>
+        ) : (
+          <button className="btn primary big" onClick={startNewClassic}>
+            Play Classic
+          </button>
+        )}
         <button className="btn big" onClick={startDuo}>
           Play duo
           <span className="btn-sub">Two players, one board, live</span>
@@ -66,9 +97,15 @@ export function HomeScreen({ onClassic, onDuo, onSocial }: Props) {
 
       {best > 0 && <p className="home-best">Best {best.toLocaleString()}</p>}
 
-      <button className="link-btn" onClick={toggleSound}>
-        Sound: {muted ? 'off' : 'on'}
-      </button>
+      <div className="home-tools" aria-label="More options">
+        <button className="link-btn" onClick={() => setPanel('statistics')}>
+          Statistics
+        </button>
+        <span aria-hidden>·</span>
+        <button className="link-btn" onClick={() => setPanel('settings')}>
+          Settings
+        </button>
+      </div>
 
       <details className="how-to">
         <summary>How to play</summary>
@@ -87,6 +124,27 @@ export function HomeScreen({ onClassic, onDuo, onSocial }: Props) {
           <li>Your best completed Classic game or Duo team game ranks until Monday UTC.</li>
         </ul>
       </details>
+
+      {panel === 'settings' && (
+        <SettingsPanel
+          settings={settings}
+          onChange={changeSettings}
+          onClose={() => setPanel(null)}
+        />
+      )}
+      {panel === 'statistics' && (
+        <StatisticsPanel statistics={statistics} onClose={() => setPanel(null)} />
+      )}
+      {panel === 'new-game' && (
+        <ConfirmDialog
+          title="Start a new game?"
+          message="Your saved Classic board and score will be replaced."
+          confirmLabel="Start new game"
+          danger
+          onConfirm={onNewClassic}
+          onCancel={() => setPanel(null)}
+        />
+      )}
     </div>
   );
 }

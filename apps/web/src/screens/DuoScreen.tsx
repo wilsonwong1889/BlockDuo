@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Board } from '../components/Board';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DragLayer } from '../components/DragLayer';
 import { GameOver } from '../components/GameOver';
 import { Hud } from '../components/Hud';
@@ -8,6 +9,7 @@ import { TurnTimer } from '../components/TurnTimer';
 import { useDuoGame } from '../game/useDuoGame';
 import { useGeometry, usePlacement } from '../game/usePlacement';
 import { inviteUrl } from '../net/config';
+import { recordCompletedGame } from '../storage';
 
 interface Props {
   code: string;
@@ -19,6 +21,7 @@ export function DuoScreen({ code, name, onHome }: Props) {
   const { geom, boardRef, measureNow } = useGeometry();
   const duo = useDuoGame(code, name);
   const [copied, setCopied] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
 
   const placement = usePlacement(
     duo.state?.board ?? EMPTY_BOARD,
@@ -34,6 +37,31 @@ export function DuoScreen({ code, name, onHome }: Props) {
   const me = duo.seat !== null ? snapshot?.players[duo.seat] ?? null : null;
   const partnerSeat = duo.seat === 0 ? 1 : 0;
   const partner = snapshot?.players[partnerSeat] ?? null;
+
+  useEffect(() => {
+    if (snapshot?.phase !== 'over' || !snapshot.result) return;
+    recordCompletedGame({
+      id: `duo:${snapshot.result.id}`,
+      score: duo.state?.score ?? 0,
+      highestCombo: duo.state?.bestStreak ?? 0,
+      lines: duo.state?.linesCleared ?? 0,
+      duoWin: snapshot.result.kind === 'completed',
+    });
+  }, [duo.state, snapshot]);
+
+  const requestLeave = useCallback(() => {
+    if (snapshot && snapshot.phase !== 'over') setConfirmLeave(true);
+    else onHome();
+  }, [onHome, snapshot]);
+
+  useEffect(() => {
+    const onAppBack = (event: Event) => {
+      event.preventDefault();
+      requestLeave();
+    };
+    window.addEventListener('blokduo:back', onAppBack);
+    return () => window.removeEventListener('blokduo:back', onAppBack);
+  }, [requestLeave]);
 
   const share = async () => {
     const url = inviteUrl(code);
@@ -71,11 +99,11 @@ export function DuoScreen({ code, name, onHome }: Props) {
     return (
       <div className="screen duo">
         <header className="topbar">
-          <button className="icon-btn" onClick={onHome} aria-label="Leave game">
+          <button className="icon-btn" onClick={requestLeave} aria-label="Leave game">
             ‹
           </button>
           <span className="topbar-title">Room {code}</span>
-          <span style={{ width: '2.5rem' }} />
+          <span className="topbar-spacer" />
         </header>
         <p className="lobby-sub">{duo.error ?? 'Connecting to the room…'}</p>
         {duo.error && (
@@ -92,14 +120,14 @@ export function DuoScreen({ code, name, onHome }: Props) {
   return (
     <div className="screen duo">
       <header className="topbar">
-        <button className="icon-btn" onClick={onHome} aria-label="Leave game">
+        <button className="icon-btn" onClick={requestLeave} aria-label="Leave game">
           ‹
         </button>
         <button className="room-code" onClick={share} title="Share this room">
           {code}
           <span className="room-code-hint">{copied ? 'Link copied' : 'tap to share'}</span>
         </button>
-        <span style={{ width: '2.5rem' }} />
+        <span className="topbar-spacer" />
       </header>
 
       <div className="players">
@@ -192,7 +220,7 @@ export function DuoScreen({ code, name, onHome }: Props) {
               <button className="btn primary" onClick={share}>
                 {copied ? 'Link copied' : 'Share invite link'}
               </button>
-              <button className="btn" onClick={onHome}>
+              <button className="btn" onClick={requestLeave}>
                 Leave
               </button>
             </div>
@@ -227,6 +255,17 @@ export function DuoScreen({ code, name, onHome }: Props) {
           primaryLabel={me?.ready ? 'Waiting for partner…' : 'Rematch'}
           onPrimary={duo.rematch}
           onHome={onHome}
+        />
+      )}
+
+      {confirmLeave && (
+        <ConfirmDialog
+          title="Leave Duo game?"
+          message="Leaving may make your partner wait while the room holds your place."
+          confirmLabel="Leave game"
+          danger
+          onConfirm={onHome}
+          onCancel={() => setConfirmLeave(false)}
         />
       )}
     </div>

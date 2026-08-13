@@ -8,7 +8,7 @@ import { loadName } from './storage';
 
 export type Route =
   | { name: 'home' }
-  | { name: 'classic' }
+  | { name: 'classic'; fresh?: boolean }
   | { name: 'duo'; code?: string }
   | { name: 'social' };
 
@@ -21,7 +21,7 @@ export type Route =
 function parseHash(): Route {
   const hash = window.location.hash.replace(/^#\/?/, '');
   const [head, arg] = hash.split('/');
-  if (head === 'classic') return { name: 'classic' };
+  if (head === 'classic') return { name: 'classic', fresh: arg === 'new' };
   if (head === 'duo') return { name: 'duo', code: arg ? arg.toUpperCase() : undefined };
   if (head === 'social') return { name: 'social' };
   return { name: 'home' };
@@ -43,7 +43,7 @@ export function App() {
 
   switch (route.name) {
     case 'classic':
-      return <ClassicScreen onHome={() => go('/')} />;
+      return <ClassicScreen fresh={route.fresh} onHome={() => go('/')} />;
     case 'duo':
       // A code in the URL means the player followed an invite, so skip the
       // lobby and take them straight into the room.
@@ -63,6 +63,7 @@ export function App() {
       return (
         <HomeScreen
           onClassic={() => go('/classic')}
+          onNewClassic={() => go('/classic/new')}
           onDuo={() => go('/duo')}
           onSocial={() => go('/social')}
         />

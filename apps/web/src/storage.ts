@@ -5,6 +5,11 @@ import {
   type Move,
   type WireGameState,
 } from '@blokduo/engine';
+import {
+  addCompletedGame,
+  type CompletedGame,
+  type GameStatistics,
+} from './stats';
 
 /**
  * Local persistence. Deliberately tolerant: a corrupt or outdated value should
@@ -21,7 +26,16 @@ const KEYS = {
   clientId: 'blokduo.clientId',
   progressIdentity: 'blokduo.progressIdentity.v1',
   pendingClassic: 'blokduo.pendingClassic.v1',
+  settings: 'blokduo.settings.v1',
+  statistics: 'blokduo.statistics.v1',
 } as const;
+
+export interface AppSettings {
+  sound: boolean;
+  haptics: boolean;
+  reducedMotion: boolean;
+  highContrast: boolean;
+}
 
 export interface ProgressIdentity {
   clientId: string;
@@ -70,6 +84,22 @@ export const saveBest = (score: number) => write(KEYS.best, score);
 
 export const loadMuted = () => read<boolean>(KEYS.muted, false);
 export const saveMuted = (muted: boolean) => write(KEYS.muted, muted);
+
+export function loadAppSettings(): AppSettings {
+  const saved = read<Partial<AppSettings> | null>(KEYS.settings, null);
+  return {
+    sound: saved?.sound ?? !loadMuted(),
+    haptics: saved?.haptics ?? true,
+    reducedMotion: saved?.reducedMotion ?? false,
+    highContrast: saved?.highContrast ?? false,
+  };
+}
+
+export function saveAppSettings(settings: AppSettings) {
+  write(KEYS.settings, settings);
+  // Keep the former sound preference in sync for compatibility with older builds.
+  saveMuted(!settings.sound);
+}
 
 export const loadName = () => read<string>(KEYS.name, '');
 export const saveName = (name: string) => write(KEYS.name, name);
@@ -164,4 +194,25 @@ export function removePendingClassic(claim: PendingClassicClaim) {
   );
   if (remaining.length) write(KEYS.pendingClassic, remaining);
   else remove(KEYS.pendingClassic);
+}
+
+export function loadStatistics(): GameStatistics {
+  const saved = read<Partial<GameStatistics> | null>(KEYS.statistics, null);
+  const count = (value: unknown) =>
+    typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 0;
+  return {
+    gamesPlayed: count(saved?.gamesPlayed),
+    highestCombo: count(saved?.highestCombo),
+    totalLines: count(saved?.totalLines),
+    totalScore: count(saved?.totalScore),
+    duoWins: count(saved?.duoWins),
+    recordedGameIds: Array.isArray(saved?.recordedGameIds) ? saved.recordedGameIds : [],
+  };
+}
+
+export function recordCompletedGame(game: CompletedGame): GameStatistics {
+  const current = loadStatistics();
+  const next = addCompletedGame(current, game);
+  if (next !== current) write(KEYS.statistics, next);
+  return next;
 }

@@ -70,7 +70,7 @@ export function DuoLobby({ onEnter, onHome }: Props) {
           ‹
         </button>
         <span className="topbar-title">Duo</span>
-        <span style={{ width: '2.5rem' }} />
+        <span className="topbar-spacer" />
       </header>
 
       <h2 className="lobby-title">Two players, one board</h2>

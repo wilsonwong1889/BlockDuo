@@ -48,6 +48,21 @@ body {
   min-height: 100dvh;
 }
 
+.app-version {
+  position: fixed;
+  z-index: 10;
+  right: 0;
+  bottom: max(0.3rem, env(safe-area-inset-bottom));
+  left: 0;
+  color: var(--muted);
+  font-size: 0.58rem;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-align: center;
+  opacity: 0.42;
+  pointer-events: none;
+}
+
 button {
   font: inherit;
   color: inherit;
@@ -92,9 +107,13 @@ button {
   color: var(--muted);
 }
 
+.topbar-spacer {
+  width: 2.75rem;
+}
+
 .icon-btn {
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.75rem;
+  height: 2.75rem;
   border: 0;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.06);
@@ -741,6 +760,11 @@ button {
   filter: brightness(1.08);
 }
 
+.btn.danger {
+  background: rgba(244, 63, 94, 0.18);
+  color: #fecdd3;
+}
+
 .btn.big {
   display: flex;
   flex-direction: column;
@@ -872,6 +896,92 @@ button {
   color: var(--muted);
   font-size: 0.85rem;
   font-weight: 700;
+}
+
+.home-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 1.25rem 0;
+  text-align: left;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 3.4rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+}
+
+.settings-row > span {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.settings-row strong {
+  font-size: 0.9rem;
+}
+
+.settings-row small {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.settings-row input {
+  width: 1.35rem;
+  height: 1.35rem;
+  accent-color: var(--accent);
+}
+
+.preferences-panel > .btn,
+.statistics-panel > .btn {
+  width: 100%;
+}
+
+.lifetime-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.55rem;
+  margin: 1.25rem 0;
+}
+
+.lifetime-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.85rem 0.5rem;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.lifetime-stat strong {
+  font-size: 1.3rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.lifetime-stat span {
+  color: var(--muted);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.confirm-panel .panel-actions {
+  margin-top: 1.25rem;
 }
 
 .how-to {
@@ -1394,6 +1504,52 @@ button {
     background: var(--clear-flash);
     animation: none !important;
   }
+}
+
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
+html.reduce-motion .board-clear-ring,
+html.reduce-motion .cell.clearing {
+  animation: none !important;
+}
+
+html.reduce-motion .board-clear-ring {
+  opacity: 0.8;
+  transform: none;
+  box-shadow: none;
+}
+
+html.reduce-motion .cell.clearing {
+  opacity: 0.42;
+  background: var(--clear-flash);
+}
+
+html.high-contrast {
+  --bg: #03050b;
+  --bg-2: #0b1125;
+  --panel: #111a36;
+  --slot: #2b3867;
+  --slot-edge: #7284c9;
+  --text: #ffffff;
+  --muted: #c8d0f4;
+  --accent: #8decff;
+}
+
+html.high-contrast .btn,
+html.high-contrast .home-progress,
+html.high-contrast .social-card,
+html.high-contrast .leaderboard-card {
+  border: 1px solid rgba(255, 255, 255, 0.28);
+}
+
+html.high-contrast .app-version {
+  opacity: 0.7;
 }
 
 /* Wider screens: keep the board comfortably sized rather than filling the page. */

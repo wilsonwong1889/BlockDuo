@@ -1,5 +1,6 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Board } from '../components/Board';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DragLayer } from '../components/DragLayer';
 import { GameOver } from '../components/GameOver';
 import { Hud } from '../components/Hud';
@@ -8,12 +9,14 @@ import { useClassicGame } from '../game/useClassicGame';
 import { useGeometry, usePlacement } from '../game/usePlacement';
 
 interface Props {
+  fresh?: boolean;
   onHome: () => void;
 }
 
-export function ClassicScreen({ onHome }: Props) {
+export function ClassicScreen({ fresh = false, onHome }: Props) {
   const { geom, boardRef, measureNow } = useGeometry();
-  const game = useClassicGame();
+  const game = useClassicGame(fresh);
+  const [confirmRestart, setConfirmRestart] = useState(false);
 
   const placement = usePlacement(
     game.state.board,
@@ -68,7 +71,11 @@ export function ClassicScreen({ onHome }: Props) {
           ‹
         </button>
         <span className="topbar-title">Classic</span>
-        <button className="icon-btn" onClick={game.restart} aria-label="Restart game">
+        <button
+          className="icon-btn"
+          onClick={() => (game.state.moveCount > 0 && !game.state.over ? setConfirmRestart(true) : game.restart())}
+          aria-label="Restart game"
+        >
           ↻
         </button>
       </header>
@@ -123,6 +130,20 @@ export function ClassicScreen({ onHome }: Props) {
           rewardStatus={game.rewardStatus}
           onPrimary={game.restart}
           onHome={onHome}
+        />
+      )}
+
+      {confirmRestart && (
+        <ConfirmDialog
+          title="Restart Classic?"
+          message="Your current board and score will be replaced with a new game."
+          confirmLabel="Restart game"
+          danger
+          onConfirm={() => {
+            setConfirmRestart(false);
+            game.restart();
+          }}
+          onCancel={() => setConfirmRestart(false)}
         />
       )}
     </div>

@@ -13,6 +13,7 @@ import {
   loadBest,
   loadClassicGame,
   queuePendingClassic,
+  recordCompletedGame,
   saveBest,
   saveGame,
 } from '../storage';
@@ -34,8 +35,8 @@ export interface ClassicGame {
   reject: () => void;
 }
 
-export function useClassicGame(): ClassicGame {
-  const [initial] = useState(() => loadClassicGame());
+export function useClassicGame(startFresh = false): ClassicGame {
+  const [initial] = useState(() => (startFresh ? null : loadClassicGame()));
   const [state, setState] = useState<GameState>(() => initial?.state ?? newGame());
   const [best, setBest] = useState<number>(() => loadBest());
   const [rewardStatus, setRewardStatus] = useState<ClassicGame['rewardStatus']>(null);
@@ -51,6 +52,12 @@ export function useClassicGame(): ClassicGame {
 
   useEffect(() => {
     if (!state.over) return;
+    recordCompletedGame({
+      id: `classic:${state.seed}`,
+      score: state.score,
+      highestCombo: state.bestStreak,
+      lines: state.linesCleared,
+    });
     if (!rewardEligibleRef.current) {
       setRewardStatus('unavailable');
       return;

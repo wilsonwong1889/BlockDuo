@@ -2,8 +2,14 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
 
+const buildDate = new Date();
+const version = `1.${buildDate.getMonth() + 1}${String(buildDate.getDate()).padStart(2, '0')}`;
+
 export default defineConfig({
   plugins: [react()],
+  define: {
+    __APP_VERSION__: JSON.stringify(version),
+  },
   resolve: {
     alias: {
       // Point straight at the engine's TypeScript source. It has no build step —

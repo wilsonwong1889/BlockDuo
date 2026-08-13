@@ -22,7 +22,10 @@ function useCountUp(target: number, ms = 420) {
   useEffect(() => {
     if (shownRef.current === target) return;
 
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    if (
+      document.documentElement.classList.contains('reduce-motion') ||
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ) {
       shownRef.current = target;
       setShown(target);
       return;

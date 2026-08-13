@@ -11,6 +11,12 @@ export const isNative = () => Capacitor.isNativePlatform();
 
 export type Haptic = 'place' | 'clear' | 'combo' | 'error';
 
+let hapticsEnabled = true;
+
+export function setHapticsEnabled(enabled: boolean) {
+  hapticsEnabled = enabled;
+}
+
 /**
  * A short tap when a piece lands, something heavier for a clear.
  *
@@ -18,6 +24,7 @@ export type Haptic = 'place' | 'clear' | 'combo' | 'error';
  * at all, which is exactly why the native build is worth having.
  */
 export async function haptic(kind: Haptic): Promise<void> {
+  if (!hapticsEnabled) return;
   if (isNative()) {
     try {
       const { Haptics, ImpactStyle, NotificationType } = await import('@capacitor/haptics');
@@ -88,7 +95,8 @@ export async function initNative(): Promise<void> {
     // from the home screen.
     App.addListener('backButton', () => {
       if (window.location.hash && window.location.hash !== '#/') {
-        window.location.hash = '#/';
+        const event = new Event('blokduo:back', { cancelable: true });
+        if (window.dispatchEvent(event)) window.location.hash = '#/';
       } else {
         void App.exitApp();
       }

@@ -17,6 +17,7 @@ export function ClassicScreen({ fresh = false, onHome }: Props) {
   const { geom, boardRef, measureNow } = useGeometry();
   const game = useClassicGame(fresh);
   const [confirmRestart, setConfirmRestart] = useState(false);
+  const [showGameOver, setShowGameOver] = useState(false);
 
   const placement = usePlacement(
     game.state.board,
@@ -64,6 +65,17 @@ export function ClassicScreen({ fresh = false, onHome }: Props) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onKey]);
 
+  useEffect(() => {
+    if (!game.state.over) {
+      setShowGameOver(false);
+      return;
+    }
+    // The final placement can also clear lines. Let that compositor animation
+    // finish before mounting the full-screen blurred dialog.
+    const timer = window.setTimeout(() => setShowGameOver(true), 520);
+    return () => window.clearTimeout(timer);
+  }, [game.state.over]);
+
   return (
     <div className="screen game-screen">
       <header className="topbar">
@@ -93,7 +105,7 @@ export function ClassicScreen({ fresh = false, onHome }: Props) {
           shake={game.shake}
           onCellEnter={selected !== null ? placement.setCursor : undefined}
           onCellClick={selected !== null ? placeAtCursor : undefined}
-          dimmed={game.state.over}
+          dimmed={showGameOver}
           dragging={placement.drag !== null}
         />
       </div>
@@ -117,7 +129,7 @@ export function ClassicScreen({ fresh = false, onHome }: Props) {
         positionRef={placement.dragPositionRef}
       />
 
-      {game.state.over && (
+      {showGameOver && (
         <GameOver
           score={game.state.score}
           best={game.best}

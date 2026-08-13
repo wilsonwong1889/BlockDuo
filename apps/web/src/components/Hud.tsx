@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { streakMultiplier } from '@blokduo/engine';
 import { chainTier } from '../game/feedback';
 
@@ -9,10 +9,10 @@ import { chainTier } from '../game/feedback';
  * eye something to follow when the number jumps by hundreds.
  */
 function useCountUp(target: number, ms = 420) {
-  const [shown, setShown] = useState(target);
-  // The displayed value is mirrored in a ref so the animation frame never reads
-  // it through a stale closure, and so a new target picked up mid-tween starts
-  // from wherever the number actually is rather than from where it began.
+  const elementRef = useRef<HTMLSpanElement | null>(null);
+  const initialText = useRef(target.toLocaleString());
+  // Animate the text node directly. Score changes no longer rerender the HUD,
+  // board, and tray on every frame of the count-up.
   const shownRef = useRef(target);
   const targetRef = useRef(target);
   const raf = useRef(0);
@@ -27,7 +27,7 @@ function useCountUp(target: number, ms = 420) {
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     ) {
       shownRef.current = target;
-      setShown(target);
+      if (elementRef.current) elementRef.current.textContent = target.toLocaleString();
       return;
     }
 
@@ -35,8 +35,9 @@ function useCountUp(target: number, ms = 420) {
     const start = performance.now();
 
     const apply = (value: number) => {
+      if (shownRef.current === value) return;
       shownRef.current = value;
-      setShown(value);
+      if (elementRef.current) elementRef.current.textContent = value.toLocaleString();
     };
 
     const step = (now: number) => {
@@ -60,7 +61,7 @@ function useCountUp(target: number, ms = 420) {
     return () => cancelAnimationFrame(raf.current);
   }, [target, ms]);
 
-  return shown;
+  return { elementRef, initialText: initialText.current };
 }
 
 interface Props {
@@ -71,7 +72,7 @@ interface Props {
 }
 
 export function Hud({ score, best, streak, label = 'Score' }: Props) {
-  const shown = useCountUp(score);
+  const { elementRef: scoreRef, initialText } = useCountUp(score);
   const beatingBest = best !== undefined && score > 0 && score >= best;
   const nextMultiplier = streakMultiplier(streak).toFixed(1);
   const fullStreakCopy =
@@ -88,7 +89,9 @@ export function Hud({ score, best, streak, label = 'Score' }: Props) {
     <div className="hud">
       <div className="hud-block">
         <span className="hud-label">{label}</span>
-        <span className={`hud-score${beatingBest ? ' record' : ''}`}>{shown.toLocaleString()}</span>
+        <span ref={scoreRef} className={`hud-score${beatingBest ? ' record' : ''}`}>
+          {initialText}
+        </span>
       </div>
 
       <div

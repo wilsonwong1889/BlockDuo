@@ -18,16 +18,67 @@ interface Props {
   dragging?: boolean;
 }
 
+interface BoardCellsProps {
+  board: BoardData;
+  geom: Geometry;
+  preview: Preview | null;
+  onCellEnter?: (row: number, col: number) => void;
+  onCellClick?: (row: number, col: number) => void;
+}
+
+/**
+ * The 64 stable board cells are isolated from short-lived celebration state.
+ * Removing a clear ring, score float, or shake no longer rebuilds this grid.
+ */
+const BoardCells = memo(function BoardCells({
+  board,
+  geom,
+  preview,
+  onCellEnter,
+  onCellClick,
+}: BoardCellsProps) {
+  const { stride, cell } = geom;
+  const previewSet = new Set(preview?.cells ?? []);
+  const clearRowSet = new Set(preview?.clearRows ?? []);
+  const clearColSet = new Set(preview?.clearCols ?? []);
+
+  return Array.from({ length: CELLS }, (_, i) => {
+    const row = Math.floor(i / SIZE);
+    const col = i % SIZE;
+    const value = board[i];
+    const inPreview = previewSet.has(i);
+    const willClear = preview?.valid && (clearRowSet.has(row) || clearColSet.has(col));
+    const classes = ['cell'];
+    if (value) classes.push('filled');
+    if (inPreview) classes.push(preview?.valid ? 'preview-ok' : 'preview-bad');
+    if (willClear) classes.push('will-clear');
+
+    return (
+      <div
+        key={i}
+        className={classes.join(' ')}
+        style={{
+          left: col * stride,
+          top: row * stride,
+          width: cell,
+          height: cell,
+          ...(value ? colorVars(value) : undefined),
+        }}
+        onPointerEnter={onCellEnter ? () => onCellEnter(row, col) : undefined}
+        onClick={onCellClick ? () => onCellClick(row, col) : undefined}
+        role="gridcell"
+        aria-label={`row ${row + 1}, column ${col + 1}${value ? ', filled' : ', empty'}`}
+      />
+    );
+  });
+});
+
 const BoardView = forwardRef<HTMLDivElement, Props>(function Board(
   { board, geom, preview, clearFx, floats, shake, onCellEnter, onCellClick, dimmed, dragging },
   ref,
 ) {
   const { stride, cell, gap } = geom;
   const activeClear = clearFx[clearFx.length - 1];
-
-  const previewSet = new Set(preview?.cells ?? []);
-  const clearRowSet = new Set(preview?.clearRows ?? []);
-  const clearColSet = new Set(preview?.clearCols ?? []);
 
   return (
     <div
@@ -37,38 +88,13 @@ const BoardView = forwardRef<HTMLDivElement, Props>(function Board(
       role="grid"
       aria-label="Game board"
     >
-      {Array.from({ length: CELLS }, (_, i) => {
-        const row = Math.floor(i / SIZE);
-        const col = i % SIZE;
-        const value = board[i];
-        const inPreview = previewSet.has(i);
-        // A row or column that this placement would clear lights up, so you can
-        // see the payoff before you commit to the drop.
-        const willClear = preview?.valid && (clearRowSet.has(row) || clearColSet.has(col));
-
-        const classes = ['cell'];
-        if (value) classes.push('filled');
-        if (inPreview) classes.push(preview?.valid ? 'preview-ok' : 'preview-bad');
-        if (willClear) classes.push('will-clear');
-
-        return (
-          <div
-            key={i}
-            className={classes.join(' ')}
-            style={{
-              left: col * stride,
-              top: row * stride,
-              width: cell,
-              height: cell,
-              ...(value ? colorVars(value) : undefined),
-            }}
-            onPointerEnter={onCellEnter ? () => onCellEnter(row, col) : undefined}
-            onClick={onCellClick ? () => onCellClick(row, col) : undefined}
-            role="gridcell"
-            aria-label={`row ${row + 1}, column ${col + 1}${value ? ', filled' : ', empty'}`}
-          />
-        );
-      })}
+      <BoardCells
+        board={board}
+        geom={geom}
+        preview={preview}
+        onCellEnter={onCellEnter}
+        onCellClick={onCellClick}
+      />
 
       {/* Cleared cells are drawn on top as they were, because the engine has
           already taken them off the board. One board state, no stale copy. */}
@@ -82,7 +108,7 @@ const BoardView = forwardRef<HTMLDivElement, Props>(function Board(
               top: Math.floor(index / SIZE) * stride,
               width: cell,
               height: cell,
-              animationDelay: `${((index % SIZE) + Math.floor(index / SIZE)) * 14}ms`,
+              animationDelay: `${((index % SIZE) + Math.floor(index / SIZE)) * 8}ms`,
               ...colorVars(color),
             }}
           />

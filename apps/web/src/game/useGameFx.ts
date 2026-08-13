@@ -16,10 +16,13 @@ export function useGameFx() {
   const [floats, setFloats] = useState<FloatFx[]>([]);
   const [shake, setShake] = useState(0);
   const timers = useRef<Set<number>>(new Set());
+  const frames = useRef<Set<number>>(new Set());
 
   const cancelTimers = useCallback(() => {
     timers.current.forEach(clearTimeout);
     timers.current.clear();
+    frames.current.forEach(cancelAnimationFrame);
+    frames.current.clear();
   }, []);
 
   useEffect(() => cancelTimers, [cancelTimers]);
@@ -30,6 +33,18 @@ export function useGameFx() {
       fn();
     }, ms);
     timers.current.add(id);
+  }, []);
+
+  const afterPaint = useCallback((fn: () => void) => {
+    const frame = window.requestAnimationFrame(() => {
+      frames.current.delete(frame);
+      const id = window.setTimeout(() => {
+        timers.current.delete(id);
+        fn();
+      }, 0);
+      timers.current.add(id);
+    });
+    frames.current.add(frame);
   }, []);
 
   const showClear = useCallback(
@@ -90,26 +105,18 @@ export function useGameFx() {
       before: GameState,
       events: GameEvent[],
       move: Move,
-      options: { gameOverSound?: boolean; hapticFeedback?: boolean } = {},
+      options: {
+        gameOverSound?: boolean;
+        hapticFeedback?: boolean;
+        prioritizeVisuals?: boolean;
+      } = {},
     ) => {
-      const { gameOverSound = false, hapticFeedback = true } = options;
+      const {
+        gameOverSound = false,
+        hapticFeedback = true,
+        prioritizeVisuals = false,
+      } = options;
       const feedback = feedbackFromEvents(before, events);
-
-      if (feedback.lines > 0) {
-        sfx.playClear(feedback.lines, feedback.streakAfter);
-        if (hapticFeedback) {
-          void haptic(
-            feedback.perfectPoints > 0 || feedback.lines > 1 || feedback.streakAfter >= 2
-              ? 'combo'
-              : 'clear',
-          );
-        }
-      } else {
-        sfx.playPlace();
-        if (hapticFeedback) void haptic('place');
-      }
-
-      if (feedback.perfectPoints > 0) sfx.playPerfect();
 
       for (const event of events) {
         switch (event.type) {
@@ -130,8 +137,29 @@ export function useGameFx() {
             break;
         }
       }
+
+      const playSensoryFeedback = () => {
+        if (feedback.lines > 0) {
+          sfx.playClear(feedback.lines, feedback.streakAfter);
+          if (hapticFeedback) {
+            void haptic(
+              feedback.perfectPoints > 0 || feedback.lines > 1 || feedback.streakAfter >= 2
+                ? 'combo'
+                : 'clear',
+            );
+          }
+        } else {
+          sfx.playPlace();
+          if (hapticFeedback) void haptic('place');
+        }
+
+        if (feedback.perfectPoints > 0) sfx.playPerfect();
+      };
+
+      if (prioritizeVisuals) afterPaint(playSensoryFeedback);
+      else playSensoryFeedback();
     },
-    [playGameOver, showClear, showPerfect],
+    [afterPaint, playGameOver, showClear, showPerfect],
   );
 
   const resetFx = useCallback(() => {

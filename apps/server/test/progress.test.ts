@@ -9,6 +9,7 @@ import {
   legalAnchors,
   newGame,
   type ClaimResult,
+  type DuoMode,
   type GameState,
   type LeaderboardView,
   type Move,
@@ -53,10 +54,74 @@ async function getProfile(player: Player, name?: string): Promise<ProgressProfil
   return result.body;
 }
 
-async function createRoom(): Promise<string> {
-  const result = await post<{ code: string }>('/api/room', {});
+async function createRoom(mode: DuoMode = 'ranked'): Promise<string> {
+  const result = await post<{ code: string }>('/api/room', { mode });
   expect(result.response.status).toBe(200);
   return result.body.code;
+}
+
+/**
+ * Two authenticated players take a room all the way to a natural finish, and
+ * the final snapshot comes back. Both mode tests need the same round; only what
+ * the ledger did with it afterwards differs.
+ */
+async function playDuoRoundOut(
+  code: string,
+  alice: Player,
+  bob: Player,
+): Promise<RoomSnapshot> {
+  const aliceTicket = await roomTicket(code, alice);
+  const bobTicket = await roomTicket(code, bob);
+  let aliceClient: AuthenticatedDuoClient | null = null;
+  let bobClient: AuthenticatedDuoClient | null = null;
+
+  try {
+    aliceClient = await AuthenticatedDuoClient.connect(code, aliceTicket);
+    bobClient = await AuthenticatedDuoClient.connect(code, bobTicket);
+    expect(aliceClient.seat).not.toBe(bobClient.seat);
+
+    // Bob joined second, so his welcome contains the authoritative started state.
+    let snapshot = bobClient.welcomeSnapshot;
+    expect(snapshot.phase).toBe('playing');
+
+    const clients = [aliceClient, bobClient] as const;
+    const seats = new Map(clients.map((client) => [client.seat, client]));
+    let seq = 1;
+
+    while (snapshot.phase === 'playing' && snapshot.version < 2_000) {
+      const state = decodeState(snapshot.game);
+      let move: Move | null = null;
+      for (let slot = 0; slot < state.hand.length && !move; slot++) {
+        const held = state.hand[slot];
+        if (!held) continue;
+        const anchor = legalAnchors(state.board, getPiece(held.pieceId))[0];
+        if (anchor) move = { slot, row: anchor[0], col: anchor[1] };
+      }
+      if (!move) throw new Error('Live Duo snapshot had no legal placement');
+
+      const actor = seats.get(snapshot.turn);
+      if (!actor) throw new Error(`No client owns seat ${snapshot.turn}`);
+      actor.send({ t: 'place', seq: seq++, ...move });
+
+      // Alice is the single ordered observer. Waiting on whichever player
+      // moved would leave the partner's previous applied message queued.
+      const applied = await aliceClient.waitFor('applied');
+      expect(applied.snapshot.version).toBe(snapshot.version + 1);
+      snapshot = applied.snapshot;
+    }
+
+    if (snapshot.phase !== 'over') throw new Error('Duo game did not naturally finish');
+
+    const [aliceOver, bobOver] = await Promise.all([
+      aliceClient.waitFor('over'),
+      bobClient.waitFor('over'),
+    ]);
+    expect(aliceOver.snapshot.result).toEqual(bobOver.snapshot.result);
+    return snapshot;
+  } finally {
+    aliceClient?.close();
+    bobClient?.close();
+  }
 }
 
 async function roomTicket(code: string, player: Player): Promise<string> {
@@ -269,13 +334,13 @@ describe('progress friendships', () => {
     expect(board.response.status).toBe(200);
     expect(board.body.scope).toBe('friends');
     expect(board.body.week.key).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(board.body.entries.map((entry) => entry.name)).toEqual(
+    expect(board.body.weekly.entries.map((entry) => entry.name)).toEqual(
       expect.arrayContaining([alice.profile.name, bob.profile.name]),
     );
-    expect(board.body.entries.map((entry) => entry.name)).not.toContain(outsider.profile.name);
-    expect(board.body.entries).toHaveLength(2);
-    expect(board.body.entries.find((entry) => entry.name === alice.profile.name)?.isYou).toBe(true);
-    expect(board.body.entries.find((entry) => entry.name === bob.profile.name)?.isFriend).toBe(true);
+    expect(board.body.weekly.entries.map((entry) => entry.name)).not.toContain(outsider.profile.name);
+    expect(board.body.weekly.entries).toHaveLength(2);
+    expect(board.body.weekly.entries.find((entry) => entry.name === alice.profile.name)?.isYou).toBe(true);
+    expect(board.body.weekly.entries.find((entry) => entry.name === bob.profile.name)?.isFriend).toBe(true);
 
     await post('/api/progress/friends/remove', {
       ...alice.identity,
@@ -286,7 +351,7 @@ describe('progress friendships', () => {
       mode: 'classic',
       scope: 'friends',
     });
-    expect(afterRemoval.body.entries.map((entry) => entry.name)).toEqual([alice.profile.name]);
+    expect(afterRemoval.body.weekly.entries.map((entry) => entry.name)).toEqual([alice.profile.name]);
   });
 });
 
@@ -376,62 +441,8 @@ describe('Duo progression settlement', () => {
     const marker = crypto.randomUUID().slice(0, 8);
     const alice = await createPlayer(`Duo Alice ${marker}`);
     const bob = await createPlayer(`Duo Bob ${marker}`);
-    const code = await createRoom();
-    const aliceTicket = await roomTicket(code, alice);
-    const bobTicket = await roomTicket(code, bob);
-    let aliceClient: AuthenticatedDuoClient | null = null;
-    let bobClient: AuthenticatedDuoClient | null = null;
-    let finalSnapshot: RoomSnapshot | null = null;
-
-    try {
-      aliceClient = await AuthenticatedDuoClient.connect(code, aliceTicket);
-      bobClient = await AuthenticatedDuoClient.connect(code, bobTicket);
-      expect(aliceClient.seat).not.toBe(bobClient.seat);
-
-      // Bob joined second, so his welcome contains the authoritative started state.
-      let snapshot = bobClient.welcomeSnapshot;
-      expect(snapshot.phase).toBe('playing');
-
-      const clients = [aliceClient, bobClient] as const;
-      const seats = new Map(clients.map((client) => [client.seat, client]));
-      let seq = 1;
-
-      while (snapshot.phase === 'playing' && snapshot.version < 2_000) {
-        const state = decodeState(snapshot.game);
-        let move: Move | null = null;
-        for (let slot = 0; slot < state.hand.length && !move; slot++) {
-          const held = state.hand[slot];
-          if (!held) continue;
-          const anchor = legalAnchors(state.board, getPiece(held.pieceId))[0];
-          if (anchor) move = { slot, row: anchor[0], col: anchor[1] };
-        }
-        if (!move) throw new Error('Live Duo snapshot had no legal placement');
-
-        const actor = seats.get(snapshot.turn);
-        if (!actor) throw new Error(`No client owns seat ${snapshot.turn}`);
-        actor.send({ t: 'place', seq: seq++, ...move });
-
-        // Alice is the single ordered observer. Waiting on whichever player
-        // moved would leave the partner's previous applied message queued.
-        const applied = await aliceClient.waitFor('applied');
-        expect(applied.snapshot.version).toBe(snapshot.version + 1);
-        snapshot = applied.snapshot;
-      }
-
-      if (snapshot.phase !== 'over') throw new Error('Duo game did not naturally finish');
-      finalSnapshot = snapshot;
-
-      const [aliceOver, bobOver] = await Promise.all([
-        aliceClient.waitFor('over'),
-        bobClient.waitFor('over'),
-      ]);
-      expect(aliceOver.snapshot.result).toEqual(bobOver.snapshot.result);
-    } finally {
-      aliceClient?.close();
-      bobClient?.close();
-    }
-
-    if (!finalSnapshot) throw new Error('Missing final Duo snapshot');
+    const code = await createRoom('ranked');
+    const finalSnapshot = await playDuoRoundOut(code, alice, bob);
     const finalState = decodeState(finalSnapshot.game);
     const expectedReward = coinReward(finalState.score, finalState.moveCount);
     expect(finalState.over).toBe(true);
@@ -463,15 +474,55 @@ describe('Duo progression settlement', () => {
       scope: 'global',
     });
     expect(leaderboard.response.status).toBe(200);
-    const pairEntries = leaderboard.body.entries.filter(
-      (entry) => entry.name.includes(alice.profile.name) && entry.name.includes(bob.profile.name),
-    );
-    expect(pairEntries).toHaveLength(1);
-    expect(pairEntries[0]).toMatchObject({
-      score: finalState.score,
-      moveCount: finalState.moveCount,
-      mode: 'duo',
-      isYou: true,
+
+    // The same result is filed under this week and under all time, so it keeps
+    // its place on the permanent board once the week has rolled over.
+    const ourPair = (board: { entries: LeaderboardView['weekly']['entries'] }) =>
+      board.entries.filter(
+        (entry) => entry.name.includes(alice.profile.name) && entry.name.includes(bob.profile.name),
+      );
+
+    for (const board of [leaderboard.body.weekly, leaderboard.body.allTime]) {
+      const pairEntries = ourPair(board);
+      expect(pairEntries).toHaveLength(1);
+      expect(pairEntries[0]).toMatchObject({
+        score: finalState.score,
+        moveCount: finalState.moveCount,
+        mode: 'duo',
+        isYou: true,
+      });
+    }
+  }, 10_000);
+
+  it('pays a Classic room but keeps it off both boards', async () => {
+    const marker = crypto.randomUUID().slice(0, 8);
+    const alice = await createPlayer(`Casual Alice ${marker}`);
+    const bob = await createPlayer(`Casual Bob ${marker}`);
+    const code = await createRoom('classic');
+
+    const finalSnapshot = await playDuoRoundOut(code, alice, bob);
+    expect(finalSnapshot.mode).toBe('classic');
+
+    const finalState = decodeState(finalSnapshot.game);
+    const expectedReward = coinReward(finalState.score, finalState.moveCount);
+    // Coins still land: casual is not unrewarded, it is only unranked.
+    expect(await getProfile(alice)).toMatchObject({
+      coins: expectedReward.totalCoins,
+      gamesPlayed: 1,
     });
+    expect(await getProfile(bob)).toMatchObject({
+      coins: expectedReward.totalCoins,
+      gamesPlayed: 1,
+    });
+
+    const leaderboard = await post<LeaderboardView>('/api/progress/leaderboard', {
+      ...alice.identity,
+      mode: 'duo',
+      scope: 'global',
+    });
+    for (const board of [leaderboard.body.weekly, leaderboard.body.allTime]) {
+      expect(board.entries.filter((entry) => entry.name.includes(marker))).toHaveLength(0);
+      expect(board.selfRank).toBeNull();
+    }
   }, 10_000);
 });

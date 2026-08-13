@@ -1,5 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
+  DEFAULT_DUO_MODE,
+  DUO_TURN_MS,
   MAX_CONSECUTIVE_TIMEOUTS,
   RECONNECT_GRACE_MS,
   ROOM_IDLE_MS,
@@ -7,9 +9,12 @@ import {
   applyMove,
   coinReward,
   decodeState,
+  duoModeRanks,
   encodeState,
+  isDuoMode,
   newGame,
   type ClientMessage,
+  type DuoMode,
   type CoinReward,
   type PlayerView,
   type RoomSnapshot,
@@ -59,6 +64,8 @@ interface RoomResult {
 
 interface Room {
   code: string;
+  /** Chosen by the host at creation. Absent on rooms stored before modes existed. */
+  mode?: DuoMode;
   /** Random per room lifetime, so a recycled short code cannot recycle result IDs. */
   seriesId: string;
   phase: 'waiting' | 'playing' | 'over';
@@ -96,9 +103,15 @@ interface Attachment {
 export class RoomDO extends DurableObject<Env> {
   private room: Room | null = null;
 
+  /** A room stored before modes existed keeps the single timer it was built on. */
+  private roomMode(room: Room): DuoMode {
+    return isDuoMode(room.mode) ? room.mode : DEFAULT_DUO_MODE;
+  }
+
   /** Real durations in production; shortened in tests so the alarms are testable. */
-  private get turnMs(): number {
-    return Number(this.env.TURN_MS ?? TURN_MS);
+  private turnMsFor(room: Room): number {
+    if (this.env.TURN_MS !== undefined) return Number(this.env.TURN_MS);
+    return isDuoMode(room.mode) ? DUO_TURN_MS[room.mode] : TURN_MS;
   }
 
   private get graceMs(): number {
@@ -136,11 +149,12 @@ export class RoomDO extends DurableObject<Env> {
   }
 
   /** Create the room if it does not exist. Returns false if the code is taken. */
-  async claim(code: string): Promise<boolean> {
+  async claim(code: string, mode: DuoMode = DEFAULT_DUO_MODE): Promise<boolean> {
     if (await this.load()) return false;
     const game = newGame();
     await this.save({
       code,
+      mode: isDuoMode(mode) ? mode : DEFAULT_DUO_MODE,
       seriesId: randomToken(16),
       phase: 'waiting',
       game: encodeState(game),
@@ -160,7 +174,12 @@ export class RoomDO extends DurableObject<Env> {
     return true;
   }
 
-  async status(): Promise<{ exists: boolean; open: boolean; players: number }> {
+  async status(): Promise<{
+    exists: boolean;
+    open: boolean;
+    players: number;
+    mode?: DuoMode;
+  }> {
     const room = await this.load();
     if (!room) return { exists: false, open: false, players: 0 };
     const taken = room.seats.filter(Boolean).length;
@@ -169,6 +188,7 @@ export class RoomDO extends DurableObject<Env> {
       exists: true,
       open: taken < 2 && room.phase !== 'over' && !rosterLocked,
       players: taken,
+      mode: this.roomMode(room),
     };
   }
 
@@ -298,7 +318,7 @@ export class RoomDO extends DurableObject<Env> {
 
     if (room.seats.every(Boolean) && room.phase === 'waiting') {
       room.phase = 'playing';
-      room.deadline = Date.now() + this.turnMs;
+      room.deadline = Date.now() + this.turnMsFor(room);
       room.pausedAt = null;
       room.matchPlayerIds = this.eligibleRoster(room);
     } else if (room.seats.every(Boolean) && room.phase === 'playing' && room.game.moveCount === 0) {
@@ -372,7 +392,7 @@ export class RoomDO extends DurableObject<Env> {
     room.game = encodeState(after);
     room.version += 1;
     room.turn = this.nextSeat(room, seat);
-    room.deadline = Date.now() + this.turnMs;
+    room.deadline = Date.now() + this.turnMsFor(room);
     room.pausedAt = null;
     if (after.over) {
       room.phase = 'over';
@@ -447,7 +467,7 @@ export class RoomDO extends DurableObject<Env> {
     // The player who did not move last goes first, so a rematch does not hand
     // the same person the opening advantage twice.
     room.turn = this.nextSeat(room, room.turn);
-    room.deadline = room.phase === 'playing' ? Date.now() + this.turnMs : null;
+    room.deadline = room.phase === 'playing' ? Date.now() + this.turnMsFor(room) : null;
     room.pausedAt = null;
     for (const s of seated) {
       s.ready = false;
@@ -542,7 +562,7 @@ export class RoomDO extends DurableObject<Env> {
         changed = true;
         if (room.turn === i) {
           room.turn = this.nextSeat(room, i as Seat);
-          room.deadline = now + this.turnMs;
+          room.deadline = now + this.turnMsFor(room);
         }
         room.pausedAt = null;
         if (!room.seats.some(Boolean)) {
@@ -572,7 +592,7 @@ export class RoomDO extends DurableObject<Env> {
         // piece somewhere they did not choose is worse than losing the turn.
         const timedOut = room.turn;
         room.turn = this.nextSeat(room, room.turn);
-        room.deadline = now + this.turnMs;
+        room.deadline = now + this.turnMsFor(room);
         await this.save(room);
         this.broadcast({ t: 'timeout', seat: timedOut, snapshot: this.snapshot(room) });
         return;
@@ -617,6 +637,7 @@ export class RoomDO extends DurableObject<Env> {
   private snapshot(room: Room): RoomSnapshot {
     return {
       code: room.code,
+      mode: this.roomMode(room),
       phase: room.phase,
       game: room.game,
       turn: room.turn,
@@ -675,7 +696,8 @@ export class RoomDO extends DurableObject<Env> {
         players,
         score: state.score,
         moveCount: state.moveCount,
-        ranked: true,
+        // Classic rooms are played for coins alone; only Ranked reaches a board.
+        ranked: duoModeRanks(this.roomMode(room)),
       });
       if (settled.ok) {
         room.result.settled = true;

@@ -1,4 +1,4 @@
-import { isValidRoomCode, randomRoomCode } from '@blokduo/engine';
+import { DEFAULT_DUO_MODE, isDuoMode, isValidRoomCode, randomRoomCode } from '@blokduo/engine';
 import {
   ProgressDO,
   type ProgressCredentials,
@@ -108,13 +108,19 @@ export default {
 
     // POST /api/room — mint a room and return its code.
     if (url.pathname === '/api/room' && request.method === 'POST') {
+      // The mode is fixed here and never changes: a joiner inherits whatever
+      // the host picked, and an unreadable body is simply the default.
+      const body = await request.json().catch(() => null);
+      const wanted = (body as { mode?: unknown } | null)?.mode;
+      const mode = isDuoMode(wanted) ? wanted : DEFAULT_DUO_MODE;
+
       // Codes are short enough to read aloud, so collisions are possible even
       // though they are unlikely. Claiming is atomic inside the room's own DO,
       // so retrying on a taken code is safe.
       for (let attempt = 0; attempt < 8; attempt++) {
         const code = randomRoomCode();
-        const claimed = await roomStub(env, code).claim(code);
-        if (claimed) return json({ code });
+        const claimed = await roomStub(env, code).claim(code, mode);
+        if (claimed) return json({ code, mode });
       }
       return json({ error: 'Could not allocate a room, try again' }, 503);
     }

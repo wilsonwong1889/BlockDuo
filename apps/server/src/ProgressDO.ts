@@ -45,7 +45,13 @@ interface StoredProfile {
   updatedAt: number;
 }
 
-interface WeeklyScore {
+/**
+ * One best-score record. The same shape is stored twice — once under the week
+ * it happened in, once under the all-time window — so a board is a prefix scan
+ * either way, and both stay bounded by the number of players rather than by
+ * the number of games ever played.
+ */
+interface RankedScore {
   id: string;
   participantIds: string[];
   names: string[];
@@ -54,6 +60,9 @@ interface WeeklyScore {
   mode: GameMode;
   achievedAt: number;
 }
+
+/** The window a record is filed under. Weeks use their Monday's date. */
+const ALL_TIME = 'alltime';
 
 interface StoredClaim {
   reward: CoinReward;
@@ -254,31 +263,46 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     if (scope !== 'global' && scope !== 'friends') return fail(400, 'Unknown leaderboard scope');
 
     const week = weekWindow();
-    const records = [
-      ...(await this.ctx.storage.list<WeeklyScore>({ prefix: scorePrefix(week.key, mode) })).values(),
-    ].sort(compareScores);
     const allowed = new Set([profile.clientId, ...profile.friendIds]);
-    const filtered =
-      scope === 'friends'
-        ? records.filter((record) => record.participantIds.some((id) => allowed.has(id)))
-        : records;
-    const selfIndex = filtered.findIndex((record) => record.participantIds.includes(profile.clientId));
-    const visible = filtered.slice(0, LEADERBOARD_LIMIT);
 
-    const entries: LeaderboardEntry[] = visible.map((record, index) => ({
-      rank: index + 1,
-      name: record.names.join(' + '),
-      score: record.score,
-      moveCount: record.moveCount,
-      mode: record.mode,
-      achievedAt: record.achievedAt,
-      isYou: record.participantIds.includes(profile.clientId),
-      isFriend: record.participantIds.some(
-        (id) => id !== profile.clientId && profile.friendIds.includes(id),
-      ),
-    }));
+    const board = async (window: string) => {
+      const records = [
+        ...(await this.ctx.storage.list<RankedScore>({ prefix: scorePrefix(window, mode) })).values(),
+      ].sort(compareScores);
+      const filtered =
+        scope === 'friends'
+          ? records.filter((record) => record.participantIds.some((id) => allowed.has(id)))
+          : records;
+      // Found before the visible slice, so your rank is still reported when you
+      // are further down the board than it shows.
+      const selfIndex = filtered.findIndex((record) =>
+        record.participantIds.includes(profile.clientId),
+      );
 
-    return ok({ scope, week, entries, selfRank: selfIndex < 0 ? null : selfIndex + 1 });
+      const entries: LeaderboardEntry[] = filtered
+        .slice(0, LEADERBOARD_LIMIT)
+        .map((record, index) => ({
+          rank: index + 1,
+          name: record.names.join(' + '),
+          score: record.score,
+          moveCount: record.moveCount,
+          mode: record.mode,
+          achievedAt: record.achievedAt,
+          isYou: record.participantIds.includes(profile.clientId),
+          isFriend: record.participantIds.some(
+            (id) => id !== profile.clientId && profile.friendIds.includes(id),
+          ),
+        }));
+
+      return { entries, selfRank: selfIndex < 0 ? null : selfIndex + 1 };
+    };
+
+    return ok({
+      scope,
+      week,
+      allTime: await board(ALL_TIME),
+      weekly: await board(week.key),
+    });
   }
 
   /** Replay the complete transcript; no client-supplied score is ever trusted. */
@@ -323,7 +347,7 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     }
 
     const reward = coinReward(finalState.score, finalState.moveCount);
-    const weeklyRecord: WeeklyScore = {
+    const record: RankedScore = {
       id: profile.clientId,
       participantIds: [profile.clientId],
       names: [profile.name],
@@ -332,18 +356,18 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       mode: 'classic',
       achievedAt: Date.now(),
     };
-    const weekly = await this.weeklyUpdate(weeklyRecord);
-    const weeklyBest = weekly.update;
+    const ranked = await this.rankedWrites(record);
 
     profile.coins = safeAdd(profile.coins, reward.totalCoins);
     profile.gamesPlayed += 1;
     profile.updatedAt = Date.now();
-    const writes: Record<string, StoredProfile | StoredClaim | WeeklyScore> = {
+    const writes: Record<string, StoredProfile | StoredClaim | RankedScore> = {
+      ...ranked.writes,
       [profileKey(profile.clientId)]: profile,
-      [claimKey]: { reward, weeklyBest } satisfies StoredClaim,
+      [claimKey]: { reward, weeklyBest: ranked.weeklyBest } satisfies StoredClaim,
     };
-    if (weekly.update) writes[weekly.key] = weeklyRecord;
     await this.ctx.storage.put(writes);
+    const weeklyBest = ranked.weeklyBest;
 
     return ok({ awarded: true, reward, weeklyBest, profile: await this.view(profile) });
   }
@@ -370,7 +394,7 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
 
     const reward = coinReward(input.score, input.moveCount);
     const now = Date.now();
-    const writes: Record<string, StoredProfile | StoredClaim | WeeklyScore> = {};
+    const writes: Record<string, StoredProfile | StoredClaim | RankedScore> = {};
     for (const profile of profiles as StoredProfile[]) {
       profile.coins = safeAdd(profile.coins, reward.totalCoins);
       profile.gamesPlayed += 1;
@@ -378,12 +402,14 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       writes[profileKey(profile.clientId)] = profile;
     }
 
+    // Coins are paid for any completed Duo game; only a Ranked room reaches the
+    // boards. A minute a turn is a different game from five seconds a turn, and
+    // one leaderboard cannot hold both honestly.
     let weeklyBest = false;
-    let weeklyWrite: { key: string; record: WeeklyScore } | null = null;
     if (input.ranked) {
       const sortedPlayers = [...input.players].sort((a, b) => a.clientId.localeCompare(b.clientId));
       const pairId = sortedPlayers.map((player) => player.clientId).join('+');
-      const record: WeeklyScore = {
+      const record: RankedScore = {
         id: pairId,
         participantIds: sortedPlayers.map((player) => player.clientId),
         names: sortedPlayers.map((player) => cleanName(player.name)),
@@ -392,13 +418,12 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
         mode: 'duo',
         achievedAt: now,
       };
-      const weekly = await this.weeklyUpdate(record);
-      weeklyBest = weekly.update;
-      if (weekly.update) weeklyWrite = { key: weekly.key, record };
+      const ranked = await this.rankedWrites(record);
+      weeklyBest = ranked.weeklyBest;
+      Object.assign(writes, ranked.writes);
     }
 
     writes[claimKey] = { reward, weeklyBest };
-    if (weeklyWrite) writes[weeklyWrite.key] = weeklyWrite.record;
     await this.ctx.storage.put(writes);
     return ok(true);
   }
@@ -429,20 +454,34 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     };
   }
 
-  private async weeklyUpdate(
-    record: WeeklyScore,
-  ): Promise<{ key: string; update: boolean }> {
+  /**
+   * The writes this record earns, in both windows.
+   *
+   * A window only takes the record if it beats what is already filed there, so
+   * a great score stays on the all-time board after its week has rolled over.
+   * `weeklyBest` is reported separately because that is what the end-of-game
+   * card celebrates.
+   */
+  private async rankedWrites(
+    record: RankedScore,
+  ): Promise<{ writes: Record<string, RankedScore>; weeklyBest: boolean }> {
     const week = weekWindow(record.achievedAt);
-    const key = scoreKey(week.key, record.mode, record.id);
-    const previous = await this.ctx.storage.get<WeeklyScore>(key);
-    if (
-      previous &&
-      (previous.score > record.score ||
-        (previous.score === record.score && previous.achievedAt <= record.achievedAt))
-    ) {
-      return { key, update: false };
+    const writes: Record<string, RankedScore> = {};
+    let weeklyBest = false;
+
+    for (const window of [week.key, ALL_TIME]) {
+      const key = scoreKey(window, record.mode, record.id);
+      const previous = await this.ctx.storage.get<RankedScore>(key);
+      const beaten =
+        !previous ||
+        previous.score < record.score ||
+        (previous.score === record.score && previous.achievedAt > record.achievedAt);
+      if (!beaten) continue;
+      writes[key] = record;
+      if (window === week.key) weeklyBest = true;
     }
-    return { key, update: true };
+
+    return { writes, weeklyBest };
   }
 }
 
@@ -454,12 +493,12 @@ function codeKey(friendCode: string) {
   return `code:${friendCode}`;
 }
 
-function scorePrefix(week: string, mode: GameMode) {
-  return `score:${week}:${mode}:`;
+function scorePrefix(window: string, mode: GameMode) {
+  return `score:${window}:${mode}:`;
 }
 
-function scoreKey(week: string, mode: GameMode, id: string) {
-  return `${scorePrefix(week, mode)}${id}`;
+function scoreKey(window: string, mode: GameMode, id: string) {
+  return `${scorePrefix(window, mode)}${id}`;
 }
 
 function cleanName(value: unknown): string {
@@ -491,7 +530,7 @@ function validMove(move: Move): boolean {
   );
 }
 
-function compareScores(a: WeeklyScore, b: WeeklyScore): number {
+function compareScores(a: RankedScore, b: RankedScore): number {
   return b.score - a.score || a.achievedAt - b.achievedAt || a.id.localeCompare(b.id);
 }
 

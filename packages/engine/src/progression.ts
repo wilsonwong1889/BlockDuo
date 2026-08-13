@@ -59,12 +59,25 @@ export interface LeaderboardEntry {
   isFriend: boolean;
 }
 
+export interface LeaderboardBoard {
+  entries: LeaderboardEntry[];
+  /** Rank across the whole board, which can be past the visible entries. */
+  selfRank: number | null;
+}
+
+/**
+ * Both windows travel together: the screen shows all time above this week, and
+ * asking for them separately would mean two round trips to draw one screen.
+ */
 export interface LeaderboardView {
   scope: LeaderboardScope;
   week: WeeklyWindow;
-  entries: LeaderboardEntry[];
-  selfRank: number | null;
+  allTime: LeaderboardBoard;
+  weekly: LeaderboardBoard;
 }
+
+/** Storage window for a ranked score. All-time records never expire. */
+export type LeaderboardWindow = 'alltime' | (string & {});
 
 export interface ClaimResult {
   /** False when an already-processed game is returned idempotently. */

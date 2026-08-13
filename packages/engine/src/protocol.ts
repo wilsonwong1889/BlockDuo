@@ -12,7 +12,37 @@ import type { GameEvent } from './types.js';
  * other.
  */
 
-/** How long a player has to place before their turn passes to their partner. */
+/**
+ * The two ways a Duo room can be played, fixed when the room is created.
+ *
+ * Classic is the thinking game: a full minute a turn, played for coins. Ranked
+ * gives you five seconds, and is the only mode that reaches the leaderboards —
+ * a board you can take an hour over is not a board worth ranking.
+ */
+export type DuoMode = 'classic' | 'ranked';
+
+export const DUO_TURN_MS: Record<DuoMode, number> = {
+  classic: 60_000,
+  ranked: 5_000,
+};
+
+export const DEFAULT_DUO_MODE: DuoMode = 'classic';
+
+export function isDuoMode(value: unknown): value is DuoMode {
+  return value === 'classic' || value === 'ranked';
+}
+
+/** Only Ranked results are written to the leaderboards. */
+export function duoModeRanks(mode: DuoMode): boolean {
+  return mode === 'ranked';
+}
+
+/**
+ * How long a player has to place before their turn passes to their partner.
+ *
+ * @deprecated Rooms carry a mode now; prefer `DUO_TURN_MS[mode]`. Kept as the
+ * fallback for a room stored before modes existed.
+ */
 export const TURN_MS = 45_000;
 
 /** A dropped connection holds its seat this long before the game continues without it. */
@@ -42,6 +72,8 @@ export interface PlayerView {
 
 export interface RoomSnapshot {
   code: string;
+  /** Fixed for the room's lifetime; a joiner inherits whatever the host chose. */
+  mode: DuoMode;
   phase: 'waiting' | 'playing' | 'over';
   game: WireGameState;
   turn: Seat;

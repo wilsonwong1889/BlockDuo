@@ -1,3 +1,5 @@
+import { Modal } from './Modal';
+
 interface Props {
   title: string;
   message: string;
@@ -16,19 +18,16 @@ export function ConfirmDialog({
   danger = false,
 }: Props) {
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="panel confirm-panel">
-        <h2 className="panel-title">{title}</h2>
-        <p className="panel-note">{message}</p>
-        <div className="panel-actions">
-          <button className={`btn${danger ? ' danger' : ' primary'}`} onClick={onConfirm}>
-            {confirmLabel}
-          </button>
-          <button className="btn" onClick={onCancel} autoFocus>
-            Cancel
-          </button>
-        </div>
+    <Modal title={title} panelClassName="confirm-panel" onDismiss={onCancel}>
+      <p className="panel-note">{message}</p>
+      <div className="panel-actions">
+        <button className={`btn${danger ? ' danger' : ' primary'}`} onClick={onConfirm}>
+          {confirmLabel}
+        </button>
+        <button className="btn" onClick={onCancel} autoFocus>
+          Cancel
+        </button>
       </div>
-    </div>
+    </Modal>
   );
 }

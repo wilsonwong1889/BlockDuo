@@ -93,10 +93,15 @@ export async function initNative(): Promise<void> {
 
     // Android's back button should walk the app's own screens, and only exit
     // from the home screen.
+    //
+    // The event goes out first from wherever we are, including Home: a dialog
+    // open over the home screen has to get the chance to close, or back quits
+    // the app out from under it. Only an unclaimed press navigates or exits.
     App.addListener('backButton', () => {
+      const event = new Event('blokduo:back', { cancelable: true });
+      if (!window.dispatchEvent(event)) return;
       if (window.location.hash && window.location.hash !== '#/') {
-        const event = new Event('blokduo:back', { cancelable: true });
-        if (window.dispatchEvent(event)) window.location.hash = '#/';
+        window.location.hash = '#/';
       } else {
         void App.exitApp();
       }

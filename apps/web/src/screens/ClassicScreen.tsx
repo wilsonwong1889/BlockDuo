@@ -4,6 +4,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DragLayer } from '../components/DragLayer';
 import { GameOver } from '../components/GameOver';
 import { Hud } from '../components/Hud';
+import { isModalOpen } from '../components/modalStack';
 import { Tray } from '../components/Tray';
 import { useClassicGame } from '../game/useClassicGame';
 import { useGeometry, usePlacement } from '../game/usePlacement';
@@ -35,7 +36,9 @@ export function ClassicScreen({ fresh = false, onHome }: Props) {
   // Enter. Nothing in the game requires a pointer.
   const onKey = useCallback(
     (e: KeyboardEvent) => {
-      if (game.state.over) return;
+      // A dialog on top owns the keyboard, Escape especially: it closes the
+      // dialog rather than clearing the piece selected on the board behind it.
+      if (isModalOpen() || game.state.over) return;
       if (e.key >= '1' && e.key <= '3') {
         toggleSelect(Number(e.key) - 1);
         e.preventDefault();

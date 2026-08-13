@@ -8,6 +8,7 @@ import { Tray } from '../components/Tray';
 import { TurnTimer } from '../components/TurnTimer';
 import { useDuoGame } from '../game/useDuoGame';
 import { useGeometry, usePlacement } from '../game/usePlacement';
+import { useBackHandler } from '../native/useBackHandler';
 import { inviteUrl } from '../net/config';
 import { recordCompletedGame } from '../storage';
 
@@ -54,14 +55,12 @@ export function DuoScreen({ code, name, onHome }: Props) {
     else onHome();
   }, [onHome, snapshot]);
 
-  useEffect(() => {
-    const onAppBack = (event: Event) => {
-      event.preventDefault();
-      requestLeave();
-    };
-    window.addEventListener('blokduo:back', onAppBack);
-    return () => window.removeEventListener('blokduo:back', onAppBack);
-  }, [requestLeave]);
+  // Back out of a live room asks first, the same as the header button. A dialog
+  // open over this screen registered later, so it answers back before we do.
+  useBackHandler(() => {
+    requestLeave();
+    return true;
+  });
 
   const share = async () => {
     const url = inviteUrl(code);

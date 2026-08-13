@@ -1,3 +1,4 @@
+import { Modal } from './Modal';
 import { averageScore, type GameStatistics } from '../stats';
 
 interface Props {
@@ -15,25 +16,22 @@ export function StatisticsPanel({ statistics, onClose }: Props) {
   ];
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label="Game statistics">
-      <div className="panel statistics-panel">
-        <h2 className="panel-title">Game statistics</h2>
-        <p className="panel-note">Your lifetime results on this device.</p>
-        <div className="lifetime-stat-grid">
-          {stats.map((stat) => (
-            <div className="lifetime-stat" key={stat.label}>
-              <strong>{stat.value.toLocaleString()}</strong>
-              <span>{stat.label}</span>
-            </div>
-          ))}
-        </div>
-        {statistics.gamesPlayed === 0 && (
-          <p className="panel-note">Finish a game to start building your stats.</p>
-        )}
-        <button className="btn primary" onClick={onClose} autoFocus>
-          Done
-        </button>
+    <Modal title="Game statistics" panelClassName="statistics-panel" onDismiss={onClose}>
+      <p className="panel-note">Your lifetime results on this device.</p>
+      <div className="lifetime-stat-grid">
+        {stats.map((stat) => (
+          <div className="lifetime-stat" key={stat.label}>
+            <strong>{stat.value.toLocaleString()}</strong>
+            <span>{stat.label}</span>
+          </div>
+        ))}
       </div>
-    </div>
+      {statistics.gamesPlayed === 0 && (
+        <p className="panel-note">Finish a game to start building your stats.</p>
+      )}
+      <button className="btn primary" onClick={onClose} autoFocus>
+        Done
+      </button>
+    </Modal>
   );
 }

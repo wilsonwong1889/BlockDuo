@@ -1,3 +1,4 @@
+import { Modal } from './Modal';
 import type { AppSettings } from '../storage';
 
 interface Props {
@@ -19,30 +20,27 @@ const OPTIONS: Array<{
 
 export function SettingsPanel({ settings, onChange, onClose }: Props) {
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label="Settings">
-      <div className="panel preferences-panel">
-        <h2 className="panel-title">Settings</h2>
-        <div className="settings-list">
-          {OPTIONS.map((option) => (
-            <label className="settings-row" key={option.key}>
-              <span>
-                <strong>{option.label}</strong>
-                <small>{option.description}</small>
-              </span>
-              <input
-                type="checkbox"
-                checked={settings[option.key]}
-                onChange={(event) =>
-                  onChange({ ...settings, [option.key]: event.target.checked })
-                }
-              />
-            </label>
-          ))}
-        </div>
-        <button className="btn primary" onClick={onClose} autoFocus>
-          Done
-        </button>
+    <Modal title="Settings" panelClassName="preferences-panel" onDismiss={onClose}>
+      <div className="settings-list">
+        {OPTIONS.map((option) => (
+          <label className="settings-row" key={option.key}>
+            <span>
+              <strong>{option.label}</strong>
+              <small>{option.description}</small>
+            </span>
+            <input
+              type="checkbox"
+              checked={settings[option.key]}
+              onChange={(event) =>
+                onChange({ ...settings, [option.key]: event.target.checked })
+              }
+            />
+          </label>
+        ))}
       </div>
-    </div>
+      <button className="btn primary" onClick={onClose} autoFocus>
+        Done
+      </button>
+    </Modal>
   );
 }

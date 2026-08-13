@@ -16,7 +16,7 @@ interface Props {
 }
 
 export function DuoScreen({ code, name, onHome }: Props) {
-  const { geom, boardRef } = useGeometry();
+  const { geom, boardRef, measureNow } = useGeometry();
   const duo = useDuoGame(code, name);
   const [copied, setCopied] = useState(false);
 
@@ -27,6 +27,7 @@ export function DuoScreen({ code, name, onHome }: Props) {
     duo.commit,
     duo.reject,
     duo.myTurn,
+    measureNow,
   );
 
   const snapshot = duo.snapshot;
@@ -155,6 +156,7 @@ export function DuoScreen({ code, name, onHome }: Props) {
           onCellEnter={placement.selected !== null ? placement.setCursor : undefined}
           onCellClick={placement.selected !== null ? placement.placeAtCursor : undefined}
           dimmed={!duo.myTurn}
+          dragging={placement.drag !== null}
         />
       </div>
 
@@ -170,7 +172,12 @@ export function DuoScreen({ code, name, onHome }: Props) {
         onSelect={placement.toggleSelect}
       />
 
-      <DragLayer drag={placement.drag} geom={geom} valid={placement.preview?.valid ?? false} />
+      <DragLayer
+        drag={placement.drag}
+        geom={geom}
+        valid={placement.preview?.valid ?? false}
+        positionRef={placement.dragPositionRef}
+      />
 
       {waiting && (
         <div className="overlay">

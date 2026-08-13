@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { SIZE, getPiece, type Board, type HandSlot, type Move } from '@blokduo/engine';
 import {
   anchorFromDrag,
+  dragOrigin,
+  grabOffsetForPointer,
   isTapGesture,
   previewAtAnchor,
+  type Anchor,
   type DragState,
   type Geometry,
   type Preview,
@@ -23,9 +26,40 @@ export type { DragState, Geometry, Preview } from './placementMath';
  * effect that reads `ref.current` on mount would find nothing and never run
  * again — leaving dragging with no coordinate space to aim in.
  */
-export function useGeometry(): { geom: Geometry; boardRef: (el: HTMLDivElement | null) => void } {
+export function useGeometry(): {
+  geom: Geometry;
+  boardRef: (el: HTMLDivElement | null) => void;
+  measureNow: () => Geometry | null;
+} {
   const [el, setEl] = useState<HTMLElement | null>(null);
   const [geom, setGeom] = useState<Geometry>({ stride: 0, cell: 0, gap: 0, rect: null });
+  const elRef = useRef<HTMLElement | null>(null);
+
+  const boardRef = useCallback((node: HTMLDivElement | null) => {
+    elRef.current = node;
+    setEl(node);
+  }, []);
+
+  const measureNow = useCallback((): Geometry | null => {
+    const node = elRef.current;
+    if (!node) return null;
+    const rect = node.getBoundingClientRect();
+    if (rect.width <= 0) return null;
+    const stride = rect.width / SIZE;
+    const gap = Math.max(2, Math.round(stride * 0.08));
+    const next = { stride, cell: stride - gap, gap, rect };
+    setGeom((current) => {
+      const unchanged =
+        Math.abs(current.stride - stride) < 0.01 &&
+        current.gap === gap &&
+        current.rect !== null &&
+        Math.abs(current.rect.left - rect.left) < 0.25 &&
+        Math.abs(current.rect.top - rect.top) < 0.25 &&
+        Math.abs(current.rect.width - rect.width) < 0.25;
+      return unchanged ? current : next;
+    });
+    return next;
+  }, []);
 
   useEffect(() => {
     if (!el) return;
@@ -34,20 +68,7 @@ export function useGeometry(): { geom: Geometry; boardRef: (el: HTMLDivElement |
 
     const measure = () => {
       measureFrame = null;
-      const rect = el.getBoundingClientRect();
-      if (rect.width <= 0) return;
-      const stride = rect.width / SIZE;
-      const gap = Math.max(2, Math.round(stride * 0.08));
-      setGeom((current) => {
-        const unchanged =
-          Math.abs(current.stride - stride) < 0.01 &&
-          current.gap === gap &&
-          current.rect !== null &&
-          Math.abs(current.rect.left - rect.left) < 0.25 &&
-          Math.abs(current.rect.top - rect.top) < 0.25 &&
-          Math.abs(current.rect.width - rect.width) < 0.25;
-        return unchanged ? current : { stride, cell: stride - gap, gap, rect };
-      });
+      measureNow();
     };
 
     const scheduleMeasure = () => {
@@ -74,9 +95,9 @@ export function useGeometry(): { geom: Geometry; boardRef: (el: HTMLDivElement |
       window.removeEventListener('resize', scheduleMeasure);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [el]);
+  }, [el, measureNow]);
 
-  return { geom, boardRef: setEl };
+  return { geom, boardRef, measureNow };
 }
 
 export interface PlacementApi {
@@ -91,6 +112,8 @@ export interface PlacementApi {
     trayPieceRect: DOMRect,
     trayStride: number,
   ) => void;
+  /** Fixed-position element moved directly on animation frames. */
+  dragPositionRef: (el: HTMLDivElement | null) => void;
   /** Tap-to-select, for desktop clicking and for keyboard/assistive use. */
   toggleSelect: (slot: number) => void;
   clearSelection: () => void;
@@ -107,26 +130,53 @@ export function usePlacement(
   onCommit: (move: Move) => boolean,
   onReject: () => void,
   enabled = true,
+  measureGeometry?: () => Geometry | null,
 ): PlacementApi {
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [dragAnchor, setDragAnchor] = useState<Anchor | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [cursor, setCursorState] = useState<{ row: number; col: number } | null>(null);
   const dragRef = useRef<DragState | null>(null);
+  const dragAnchorRef = useRef<Anchor | null>(null);
+  const dragPositionElRef = useRef<HTMLDivElement | null>(null);
   const boardStateRef = useRef(board);
   const handRef = useRef(hand);
   const geomRef = useRef(geom);
   const commitRef = useRef(onCommit);
   const rejectRef = useRef(onReject);
   const moveFrameRef = useRef<number | null>(null);
-  const pendingPointRef = useRef<{ x: number; y: number } | null>(null);
   const suppressSelectRef = useRef<{ slot: number; until: number } | null>(null);
 
-  dragRef.current = drag;
   boardStateRef.current = board;
   handRef.current = hand;
   geomRef.current = geom;
   commitRef.current = onCommit;
   rejectRef.current = onReject;
+
+  const updateDragPosition = useCallback((current: DragState) => {
+    const el = dragPositionElRef.current;
+    const origin = dragOrigin(current, geomRef.current);
+    if (!el || !origin) return;
+    el.style.transform = `translate3d(${origin.left}px, ${origin.top}px, 0)`;
+  }, []);
+
+  const publishDragAnchor = useCallback((current: DragState): Anchor | null => {
+    const next = anchorFromDrag(current, geomRef.current, dragAnchorRef.current);
+    const previous = dragAnchorRef.current;
+    if (next?.row === previous?.row && next?.col === previous?.col) return next;
+    dragAnchorRef.current = next;
+    setDragAnchor(next);
+    return next;
+  }, []);
+
+  const dragPositionRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      dragPositionElRef.current = el;
+      const current = dragRef.current;
+      if (el && current) updateDragPosition(current);
+    },
+    [updateDragPosition],
+  );
 
   // Drop selection whenever the piece behind it disappears (placed, or refilled).
   useEffect(() => {
@@ -139,14 +189,25 @@ export function usePlacement(
   useEffect(() => {
     if (!enabled) {
       dragRef.current = null;
+      dragAnchorRef.current = null;
       setDrag(null);
+      setDragAnchor(null);
       setSelected(null);
       setCursorState(null);
     }
   }, [enabled]);
 
+  // Keep the visual and snapped target aligned if the board is resized or
+  // shifted while a pointer is held (orientation changes are the common case).
+  useLayoutEffect(() => {
+    const current = dragRef.current;
+    if (!current) return;
+    updateDragPosition(current);
+    publishDragAnchor(current);
+  }, [geom, publishDragAnchor, updateDragPosition]);
+
   const activeSlot = drag?.slot ?? selected;
-  let activeAnchor = drag ? anchorFromDrag(drag, geom) : null;
+  let activeAnchor = drag ? dragAnchor : null;
   if (!drag && selected !== null && cursor && hand[selected]) {
     const piece = getPiece(hand[selected].pieceId);
     activeAnchor = {
@@ -176,15 +237,24 @@ export function usePlacement(
       trayPieceRect: DOMRect,
       trayStride: number,
     ) => {
-      if (!enabled) return;
+      if (!enabled || event.isPrimary === false || dragRef.current) return;
+      const measured = measureGeometry?.();
+      if (measured) geomRef.current = measured;
       try {
-        (event.target as Element).setPointerCapture?.(event.pointerId);
+        (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
       } catch {
         // Capture is an optimisation, not a requirement — move and up are bound
         // to the window regardless. Throws if the pointer is already gone.
       }
       setSelected(null);
       setCursorState(null);
+      const grab = grabOffsetForPointer(
+        event.pointerType,
+        event.clientX,
+        event.clientY,
+        trayPieceRect,
+        trayStride,
+      );
       const next: DragState = {
         slot,
         pieceId: held.pieceId,
@@ -196,14 +266,17 @@ export function usePlacement(
         originY: event.clientY,
         // Captured in cell units so the grab point survives the piece scaling up
         // from tray size to board size mid-drag.
-        grabCellX: trayStride > 0 ? (event.clientX - trayPieceRect.left) / trayStride : 0,
-        grabCellY: trayStride > 0 ? (event.clientY - trayPieceRect.top) / trayStride : 0,
-        touch: event.pointerType !== 'mouse',
+        grabCellX: grab.x,
+        grabCellY: grab.y,
+        touch: event.pointerType === 'touch',
       };
       dragRef.current = next;
+      const anchor = anchorFromDrag(next, geomRef.current);
+      dragAnchorRef.current = anchor;
+      setDragAnchor(anchor);
       setDrag(next);
     },
-    [enabled],
+    [enabled, measureGeometry],
   );
 
   // Pointer listeners stay mounted for the lifetime of the surface. Previously
@@ -216,24 +289,30 @@ export function usePlacement(
         window.cancelAnimationFrame(moveFrameRef.current);
         moveFrameRef.current = null;
       }
-      pendingPointRef.current = null;
+    };
+
+    const clearDrag = () => {
+      cancelMoveFrame();
+      dragRef.current = null;
+      dragAnchorRef.current = null;
+      setDrag(null);
+      setDragAnchor(null);
     };
 
     const onMove = (e: PointerEvent) => {
       const current = dragRef.current;
       if (!current || e.pointerId !== current.pointerId) return;
       e.preventDefault();
-      pendingPointRef.current = { x: e.clientX, y: e.clientY };
+      const coalesced = e.getCoalescedEvents?.();
+      const latest = coalesced?.length ? coalesced[coalesced.length - 1] : e;
+      dragRef.current = { ...current, x: latest.clientX, y: latest.clientY };
       if (moveFrameRef.current !== null) return;
       moveFrameRef.current = window.requestAnimationFrame(() => {
         moveFrameRef.current = null;
         const active = dragRef.current;
-        const point = pendingPointRef.current;
-        pendingPointRef.current = null;
-        if (!active || !point) return;
-        const next = { ...active, x: point.x, y: point.y };
-        dragRef.current = next;
-        setDrag(next);
+        if (!active) return;
+        updateDragPosition(active);
+        publishDragAnchor(active);
       });
     };
 
@@ -244,20 +323,16 @@ export function usePlacement(
       // A tap is the click-to-select path, not a failed drag. Let the tray's
       // click handler run without playing a rejection sound or committing.
       if (isTapGesture(finalDrag, e.clientX, e.clientY)) {
-        cancelMoveFrame();
-        dragRef.current = null;
-        setDrag(null);
+        clearDrag();
         return;
       }
 
       e.preventDefault();
-      const anchor = anchorFromDrag(finalDrag, geomRef.current);
+      const anchor = anchorFromDrag(finalDrag, geomRef.current, dragAnchorRef.current);
       const p = anchor
         ? previewAtAnchor(boardStateRef.current, handRef.current, finalDrag.slot, anchor)
         : null;
-      cancelMoveFrame();
-      dragRef.current = null;
-      setDrag(null);
+      clearDrag();
       // Browsers can dispatch a click after a drag. Suppress just that click so
       // the newly refilled piece in this slot is not accidentally selected.
       suppressSelectRef.current = { slot: finalDrag.slot, until: performance.now() + 400 };
@@ -272,21 +347,39 @@ export function usePlacement(
 
     const onCancel = (e: PointerEvent) => {
       if (e.pointerId !== dragRef.current?.pointerId) return;
-      cancelMoveFrame();
-      dragRef.current = null;
-      setDrag(null);
+      clearDrag();
+    };
+
+    const onLostCapture = (e: Event) => {
+      const pointerId = (e as PointerEvent).pointerId;
+      if (pointerId !== dragRef.current?.pointerId) return;
+      clearDrag();
+    };
+
+    const onBlur = () => {
+      if (dragRef.current) clearDrag();
+    };
+
+    const onVisibility = () => {
+      if (document.hidden && dragRef.current) clearDrag();
     };
 
     window.addEventListener('pointermove', onMove, { passive: false });
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onCancel);
+    window.addEventListener('blur', onBlur);
+    document.addEventListener('lostpointercapture', onLostCapture, true);
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
       cancelMoveFrame();
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
+      window.removeEventListener('blur', onBlur);
+      document.removeEventListener('lostpointercapture', onLostCapture, true);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, []);
+  }, [publishDragAnchor, updateDragPosition]);
 
   const toggleSelect = useCallback(
     (slot: number) => {
@@ -334,6 +427,7 @@ export function usePlacement(
 
   return {
     drag,
+    dragPositionRef,
     selected,
     preview,
     startDrag,

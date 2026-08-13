@@ -1,29 +1,24 @@
+import { memo } from 'react';
 import { PieceShape } from './PieceShape';
-import { TOUCH_LIFT_CELLS, type DragState, type Geometry } from '../game/placementMath';
+import type { DragState, Geometry } from '../game/placementMath';
 
 interface Props {
   drag: DragState | null;
   geom: Geometry;
   valid: boolean;
+  positionRef: (el: HTMLDivElement | null) => void;
 }
 
 /**
  * The piece being dragged, drawn at full board scale in a fixed-position layer
  * so it can travel outside the board without being clipped.
  */
-export function DragLayer({ drag, geom, valid }: Props) {
+function DragLayerView({ drag, geom, valid, positionRef }: Props) {
   if (!drag || geom.stride === 0) return null;
-
-  const lift = drag.touch ? TOUCH_LIFT_CELLS * geom.stride : 0;
-  const left = drag.x - drag.grabCellX * geom.stride;
-  const top = drag.y - drag.grabCellY * geom.stride - lift;
 
   return (
     <div className="drag-layer">
-      <div
-        className="drag-piece-position"
-        style={{ transform: `translate3d(${left}px, ${top}px, 0)` }}
-      >
+      <div ref={positionRef} className="drag-piece-position">
         <PieceShape
           className={`piece dragging${valid ? '' : ' invalid'}`}
           pieceId={drag.pieceId}
@@ -35,3 +30,6 @@ export function DragLayer({ drag, geom, valid }: Props) {
     </div>
   );
 }
+
+/** Pixel-level movement is applied to the position element without React renders. */
+export const DragLayer = memo(DragLayerView);

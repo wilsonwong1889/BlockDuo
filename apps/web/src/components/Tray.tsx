@@ -60,7 +60,7 @@ function TrayView({
               refs.current[slot] = el;
             }}
             onPointerDown={(e) => {
-              if (!held || disabled || e.button > 0) return;
+              if (!held || disabled || e.button > 0 || e.isPrimary === false) return;
               const el = refs.current[slot]?.querySelector('.piece') as HTMLElement | null;
               if (!el) return;
               e.preventDefault();

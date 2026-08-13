@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { boardFromString, emptyBoard, type HandSlot } from '@blokduo/engine';
 import {
   DRAG_THRESHOLD_PX,
+  SNAP_HYSTERESIS_CELLS,
   TOUCH_LIFT_CELLS,
   anchorFromDrag,
+  dragOrigin,
+  grabOffsetForPointer,
   isTapGesture,
   previewAtAnchor,
   type DragState,
@@ -13,6 +16,14 @@ import { turnTime } from '../src/components/TurnTimer';
 
 const rect = { left: 100, top: 200, width: 400 } as DOMRect;
 const geom: Geometry = { stride: 50, cell: 46, gap: 4, rect };
+const pieceRect = {
+  left: 40,
+  top: 500,
+  right: 115,
+  bottom: 525,
+  width: 75,
+  height: 25,
+} as DOMRect;
 
 function drag(overrides: Partial<DragState> = {}): DragState {
   return {
@@ -43,6 +54,47 @@ describe('placement coordinates', () => {
         geom,
       ),
     ).toEqual({ row: 2, col: 2 });
+  });
+
+  it('uses one origin for both the visual position and board target', () => {
+    const gesture = drag({ x: 287, y: 391, grabCellX: 1.25, grabCellY: 0.25 });
+    const origin = dragOrigin(gesture, geom);
+
+    expect(origin).toEqual({ left: 224.5, top: 378.5 });
+    expect(anchorFromDrag(gesture, geom)).toEqual({ row: 4, col: 2 });
+  });
+
+  it('centres touch pickups so small pieces stay under the finger', () => {
+    expect(grabOffsetForPointer('touch', 42, 502, pieceRect, 25)).toEqual({ x: 1.5, y: 0.5 });
+  });
+
+  it('centres forgiving pickups that begin in tray whitespace', () => {
+    expect(grabOffsetForPointer('mouse', 20, 510, pieceRect, 25)).toEqual({ x: 1.5, y: 0.5 });
+  });
+
+  it('keeps an accurate inside grab for a mouse or pen', () => {
+    expect(grabOffsetForPointer('mouse', 90, 512.5, pieceRect, 25)).toEqual({ x: 2, y: 0.5 });
+    expect(grabOffsetForPointer('pen', 65, 505, pieceRect, 25)).toEqual({ x: 1, y: 0.2 });
+  });
+
+  it('holds a snapped cell through boundary jitter, then advances decisively', () => {
+    const previous = { row: 2, col: 2 };
+    const withinHysteresis = (0.5 + SNAP_HYSTERESIS_CELLS - 0.01) * geom.stride;
+    const pastHysteresis = (0.5 + SNAP_HYSTERESIS_CELLS + 0.01) * geom.stride;
+    const base = drag({
+      x: geom.rect!.left + 2 * geom.stride,
+      y: geom.rect!.top + 2 * geom.stride,
+      grabCellX: 0,
+      grabCellY: 0,
+    });
+
+    expect(anchorFromDrag({ ...base, x: base.x + withinHysteresis }, geom, previous)).toEqual(
+      previous,
+    );
+    expect(anchorFromDrag({ ...base, x: base.x + pastHysteresis }, geom, previous)).toEqual({
+      row: 2,
+      col: 3,
+    });
   });
 
   it('returns no anchor before the board has been measured', () => {

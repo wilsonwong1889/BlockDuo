@@ -15,10 +15,11 @@ interface Props {
   onCellEnter?: (row: number, col: number) => void;
   onCellClick?: (row: number, col: number) => void;
   dimmed?: boolean;
+  dragging?: boolean;
 }
 
 const BoardView = forwardRef<HTMLDivElement, Props>(function Board(
-  { board, geom, preview, clearFx, floats, shake, onCellEnter, onCellClick, dimmed },
+  { board, geom, preview, clearFx, floats, shake, onCellEnter, onCellClick, dimmed, dragging },
   ref,
 ) {
   const { stride, cell, gap } = geom;
@@ -30,7 +31,7 @@ const BoardView = forwardRef<HTMLDivElement, Props>(function Board(
   return (
     <div
       ref={ref}
-      className={`board${shake ? ` shake shake-${Math.min(shake, 4)}` : ''}${dimmed ? ' dimmed' : ''}`}
+      className={`board${shake ? ` shake shake-${Math.min(shake, 4)}` : ''}${dimmed ? ' dimmed' : ''}${dragging ? ' drag-active' : ''}`}
       style={{ '--gap': `${gap}px` } as React.CSSProperties}
       role="grid"
       aria-label="Game board"

@@ -12,7 +12,7 @@ interface Props {
 }
 
 export function ClassicScreen({ onHome }: Props) {
-  const { geom, boardRef } = useGeometry();
+  const { geom, boardRef, measureNow } = useGeometry();
   const game = useClassicGame();
 
   const placement = usePlacement(
@@ -22,6 +22,7 @@ export function ClassicScreen({ onHome }: Props) {
     game.commit,
     game.reject,
     !game.state.over,
+    measureNow,
   );
 
   const { toggleSelect, moveCursor, placeAtCursor, clearSelection, selected } = placement;
@@ -86,6 +87,7 @@ export function ClassicScreen({ onHome }: Props) {
           onCellEnter={selected !== null ? placement.setCursor : undefined}
           onCellClick={selected !== null ? placeAtCursor : undefined}
           dimmed={game.state.over}
+          dragging={placement.drag !== null}
         />
       </div>
 
@@ -101,7 +103,12 @@ export function ClassicScreen({ onHome }: Props) {
         onSelect={toggleSelect}
       />
 
-      <DragLayer drag={placement.drag} geom={geom} valid={placement.preview?.valid ?? false} />
+      <DragLayer
+        drag={placement.drag}
+        geom={geom}
+        valid={placement.preview?.valid ?? false}
+        positionRef={placement.dragPositionRef}
+      />
 
       {game.state.over && (
         <GameOver

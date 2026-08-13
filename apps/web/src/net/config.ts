@@ -19,9 +19,9 @@ export function apiUrl(path: string): string {
   return `${serverOrigin()}${path}`;
 }
 
-export function roomSocketUrl(code: string, clientId: string, name: string): string {
+export function roomSocketUrl(code: string, ticket: string): string {
   const base = serverOrigin().replace(/^http/, 'ws');
-  const params = new URLSearchParams({ clientId, name });
+  const params = new URLSearchParams({ ticket });
   return `${base}/api/room/${code}/ws?${params.toString()}`;
 }
 

@@ -5,26 +5,34 @@ import {
   ROOM_IDLE_MS,
   TURN_MS,
   applyMove,
+  coinReward,
   decodeState,
   encodeState,
   newGame,
   type ClientMessage,
+  type CoinReward,
   type PlayerView,
   type RoomSnapshot,
   type Seat,
   type ServerMessage,
   type WireGameState,
 } from '@blokduo/engine';
+import type { ProgressDO } from './ProgressDO';
 
 export interface Env {
   ROOM: DurableObjectNamespace<RoomDO>;
+  PROGRESS: DurableObjectNamespace<ProgressDO>;
   /** Optional overrides, in ms. Set in tests so the timers are observable. */
   TURN_MS?: string;
   RECONNECT_GRACE_MS?: string;
+  /** Test-only compatibility for protocol tests that exercise raw client IDs. */
+  ALLOW_LEGACY_CLIENTS?: string;
 }
 
 interface SeatState extends PlayerView {
   clientId: string;
+  /** Only server-authenticated progression players can receive a Duo payout. */
+  progressEligible: boolean;
   /**
    * Which connection currently owns this seat. A reconnect can open its new
    * socket before the old one's close is delivered, so a close is only allowed
@@ -36,8 +44,23 @@ interface SeatState extends PlayerView {
   consecutiveTimeouts: number;
 }
 
+interface RoomTicket {
+  clientId: string;
+  name: string;
+  expiresAt: number;
+}
+
+interface RoomResult {
+  id: string;
+  kind: 'completed' | 'timeout';
+  reward: CoinReward | null;
+  settled: boolean;
+}
+
 interface Room {
   code: string;
+  /** Random per room lifetime, so a recycled short code cannot recycle result IDs. */
+  seriesId: string;
   phase: 'waiting' | 'playing' | 'over';
   game: WireGameState;
   turn: Seat;
@@ -48,6 +71,12 @@ interface Room {
   lastActivity: number;
   version: number;
   nextConnId: number;
+  round: number;
+  tickets: Record<string, RoomTicket>;
+  /** Fixed when two authenticated players start; replacements make the round unranked. */
+  matchPlayerIds: [string, string] | null;
+  result: RoomResult | null;
+  settlementRetryAt: number | null;
 }
 
 interface Attachment {
@@ -81,6 +110,19 @@ export class RoomDO extends DurableObject<Env> {
   private async load(): Promise<Room | null> {
     if (!this.room) {
       this.room = (await this.ctx.storage.get<Room>('room')) ?? null;
+      // Rooms created by an earlier deployment remain playable after the
+      // progression fields were introduced.
+      if (this.room) {
+        this.room.round ??= 1;
+        this.room.seriesId ??= this.room.code;
+        this.room.tickets ??= {};
+        this.room.matchPlayerIds ??= null;
+        this.room.result ??= null;
+        this.room.settlementRetryAt ??= null;
+        for (const seat of this.room.seats) {
+          if (seat && seat.progressEligible === undefined) seat.progressEligible = false;
+        }
+      }
     }
     return this.room;
   }
@@ -99,6 +141,7 @@ export class RoomDO extends DurableObject<Env> {
     const game = newGame();
     await this.save({
       code,
+      seriesId: randomToken(16),
       phase: 'waiting',
       game: encodeState(game),
       turn: 0,
@@ -108,6 +151,11 @@ export class RoomDO extends DurableObject<Env> {
       lastActivity: Date.now(),
       version: 0,
       nextConnId: 1,
+      round: 1,
+      tickets: {},
+      matchPlayerIds: null,
+      result: null,
+      settlementRetryAt: null,
     });
     return true;
   }
@@ -116,15 +164,40 @@ export class RoomDO extends DurableObject<Env> {
     const room = await this.load();
     if (!room) return { exists: false, open: false, players: 0 };
     const taken = room.seats.filter(Boolean).length;
-    return { exists: true, open: taken < 2 && room.phase !== 'over', players: taken };
+    const rosterLocked = room.phase === 'playing' && room.game.moveCount > 0 && !!room.matchPlayerIds;
+    return {
+      exists: true,
+      open: taken < 2 && room.phase !== 'over' && !rosterLocked,
+      players: taken,
+    };
+  }
+
+  /** Mint a short-lived one-use credential after the Worker authenticates a player. */
+  async issueTicket(clientId: string, name: string): Promise<string | null> {
+    const room = await this.load();
+    if (!room) return null;
+
+    const existing = room.seats.some((seat) => seat?.clientId === clientId);
+    if (room.phase === 'over' && !existing) return null;
+    if (room.phase === 'playing' && room.game.moveCount > 0 && room.matchPlayerIds && !existing) {
+      return null;
+    }
+    if (!existing && room.seats.every(Boolean)) return null;
+
+    const now = Date.now();
+    for (const [key, ticket] of Object.entries(room.tickets)) {
+      if (ticket.expiresAt <= now) delete room.tickets[key];
+    }
+    const ticket = randomToken(18);
+    room.tickets[ticket] = { clientId, name: name.slice(0, 20) || 'Player', expiresAt: now + 30_000 };
+    await this.save(room);
+    return ticket;
   }
 
   // ------------------------------------------------------------------ connect
 
   override async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    const clientId = url.searchParams.get('clientId') ?? '';
-    const name = (url.searchParams.get('name') || 'Player').slice(0, 20);
 
     if (request.headers.get('Upgrade') !== 'websocket') {
       return new Response('Expected websocket', { status: 426 });
@@ -135,9 +208,27 @@ export class RoomDO extends DurableObject<Env> {
     // about a parameter the player never sees.
     const room = await this.load();
     if (!room) return new Response('No such room', { status: 404 });
+
+    let clientId = url.searchParams.get('clientId') ?? '';
+    let name = (url.searchParams.get('name') || 'Player').slice(0, 20);
+    let progressEligible = false;
+    const ticketId = url.searchParams.get('ticket');
+    if (ticketId) {
+      const ticket = room.tickets[ticketId];
+      if (!ticket || ticket.expiresAt <= Date.now()) {
+        if (ticket) delete room.tickets[ticketId];
+        return new Response('Invalid or expired room ticket', { status: 401 });
+      }
+      delete room.tickets[ticketId];
+      clientId = ticket.clientId;
+      name = ticket.name;
+      progressEligible = true;
+    } else if (this.env.ALLOW_LEGACY_CLIENTS !== 'true') {
+      return new Response('Missing authenticated room ticket', { status: 401 });
+    }
     if (!clientId) return new Response('Missing clientId', { status: 400 });
 
-    const seat = this.assignSeat(room, clientId, name);
+    const seat = this.assignSeat(room, clientId, name, progressEligible);
     if (seat === null) return new Response('Room is full', { status: 409 });
 
     const connId = room.nextConnId++;
@@ -167,21 +258,33 @@ export class RoomDO extends DurableObject<Env> {
    * A disconnected player keeps their seat during the grace period, so a phone
    * that dropped Wi-Fi comes back to the same game rather than a stranger's.
    */
-  private assignSeat(room: Room, clientId: string, name: string): Seat | null {
+  private assignSeat(
+    room: Room,
+    clientId: string,
+    name: string,
+    progressEligible: boolean,
+  ): Seat | null {
     const existing = room.seats.findIndex((s) => s?.clientId === clientId);
     if (existing >= 0) {
       const seat = room.seats[existing]!;
       seat.connected = true;
       seat.droppedAt = null;
+      seat.name = name;
+      seat.progressEligible ||= progressEligible;
       this.resumeClock(room);
       return existing as Seat;
     }
+
+    // Once the first move has fixed the participants, a newly authenticated
+    // identity may not replace a departed player and inherit their result.
+    if (room.phase === 'playing' && room.game.moveCount > 0 && room.matchPlayerIds) return null;
 
     const free = room.seats.findIndex((s) => s === null);
     if (free < 0) return null;
 
     room.seats[free] = {
       clientId,
+      progressEligible,
       connId: 0,
       name,
       connected: true,
@@ -197,6 +300,9 @@ export class RoomDO extends DurableObject<Env> {
       room.phase = 'playing';
       room.deadline = Date.now() + this.turnMs;
       room.pausedAt = null;
+      room.matchPlayerIds = this.eligibleRoster(room);
+    } else if (room.seats.every(Boolean) && room.phase === 'playing' && room.game.moveCount === 0) {
+      room.matchPlayerIds = this.eligibleRoster(room);
     }
     return free as Seat;
   }
@@ -271,9 +377,24 @@ export class RoomDO extends DurableObject<Env> {
     if (after.over) {
       room.phase = 'over';
       room.deadline = null;
+      const eligible = this.sameRoster(room.matchPlayerIds, room);
+      room.result = {
+        id: `${room.seriesId}:${room.round}`,
+        kind: 'completed',
+        reward: eligible ? coinReward(after.score, after.moveCount) : null,
+        settled: !eligible,
+      };
     }
 
     await this.save(room);
+
+    // Finish the wallet write before clients see the result whenever possible.
+    // If storage is briefly unavailable, the room persists a retry and rematch
+    // waits, so the same round can never be paid twice or silently skipped.
+    if (room.phase === 'over' && !room.result?.settled) {
+      await this.settleProgress(room);
+      await this.save(room);
+    }
 
     this.broadcast({
       t: 'applied',
@@ -306,9 +427,22 @@ export class RoomDO extends DurableObject<Env> {
       return;
     }
 
+    if (room.result && !room.result.settled) {
+      await this.settleProgress(room);
+      if (!room.result.settled) {
+        await this.save(room);
+        this.broadcast({ t: 'state', snapshot: this.snapshot(room) });
+        return;
+      }
+    }
+
     room.game = encodeState(newGame());
     room.phase = seated.length === 2 ? 'playing' : 'waiting';
     room.version += 1;
+    room.round += 1;
+    room.result = null;
+    room.settlementRetryAt = null;
+    room.matchPlayerIds = room.phase === 'playing' ? this.eligibleRoster(room) : null;
     // The player who did not move last goes first, so a rematch does not hand
     // the same person the opening advantage twice.
     room.turn = this.nextSeat(room, room.turn);
@@ -371,6 +505,9 @@ export class RoomDO extends DurableObject<Env> {
    */
   private async scheduleAlarm(room: Room) {
     const candidates: number[] = [];
+    if (room.result && !room.result.settled && room.settlementRetryAt !== null) {
+      candidates.push(room.settlementRetryAt);
+    }
     if (room.phase === 'playing' && room.deadline !== null && room.pausedAt === null) {
       candidates.push(room.deadline);
     }
@@ -423,6 +560,12 @@ export class RoomDO extends DurableObject<Env> {
       if (stalled) {
         room.phase = 'over';
         room.deadline = null;
+        room.result = {
+          id: `${room.seriesId}:${room.round}`,
+          kind: 'timeout',
+          reward: null,
+          settled: true,
+        };
       } else {
         // The turn passes rather than being auto-played: dropping someone's
         // piece somewhere they did not choose is worse than losing the turn.
@@ -436,7 +579,17 @@ export class RoomDO extends DurableObject<Env> {
       changed = true;
     }
 
-    if (now >= room.lastActivity + ROOM_IDLE_MS) {
+    if (
+      room.result &&
+      !room.result.settled &&
+      room.settlementRetryAt !== null &&
+      now >= room.settlementRetryAt
+    ) {
+      await this.settleProgress(room);
+      changed = true;
+    }
+
+    if (now >= room.lastActivity + ROOM_IDLE_MS && (!room.result || room.result.settled)) {
       for (const ws of this.ctx.getWebSockets()) ws.close(1001, 'room idle');
       await this.ctx.storage.deleteAll();
       this.room = null;
@@ -481,7 +634,66 @@ export class RoomDO extends DurableObject<Env> {
       deadline: room.pausedAt === null ? room.deadline : null,
       serverNow: Date.now(),
       version: room.version,
+      result: room.result,
     };
+  }
+
+  /** The fixed authenticated roster at the start of a round, if it is rewardable. */
+  private eligibleRoster(room: Room): [string, string] | null {
+    const [a, b] = room.seats;
+    if (!a || !b || !a.progressEligible || !b.progressEligible || a.clientId === b.clientId) {
+      return null;
+    }
+    return [a.clientId, b.clientId];
+  }
+
+  private sameRoster(expected: [string, string] | null, room: Room): boolean {
+    if (!expected) return false;
+    const current = room.seats.map((seat) => seat?.clientId ?? '').sort();
+    return current[0] === [...expected].sort()[0] && current[1] === [...expected].sort()[1];
+  }
+
+  private async settleProgress(room: Room) {
+    if (!room.result || room.result.settled || room.result.kind !== 'completed') return;
+    if (!room.matchPlayerIds || !this.sameRoster(room.matchPlayerIds, room)) {
+      room.result.reward = null;
+      room.result.settled = true;
+      room.settlementRetryAt = null;
+      return;
+    }
+
+    const players = room.seats
+      .filter((seat): seat is SeatState => !!seat)
+      .map((seat) => ({ clientId: seat.clientId, name: seat.name }));
+    const state = decodeState(room.game);
+
+    try {
+      const progress = this.env.PROGRESS.get(this.env.PROGRESS.idFromName('global'));
+      const settled = await progress.settleDuo({
+        gameId: room.result.id,
+        players,
+        score: state.score,
+        moveCount: state.moveCount,
+        ranked: true,
+      });
+      if (settled.ok) {
+        room.result.settled = true;
+        room.settlementRetryAt = null;
+        return;
+      }
+      if (settled.status >= 400 && settled.status < 500) {
+        // A missing/invalid profile cannot become valid by retrying forever.
+        // Close the result without a payout so the room can rematch and expire.
+        room.result.reward = null;
+        room.result.settled = true;
+        room.settlementRetryAt = null;
+        return;
+      }
+    } catch {
+      // Keep the durable pending marker below. The shared ledger is idempotent,
+      // so retrying after an ambiguous failure cannot duplicate the payout.
+    }
+    room.settlementRetryAt = Date.now() + 5_000;
   }
 
   private send(ws: WebSocket, msg: ServerMessage) {
@@ -503,4 +715,10 @@ export class RoomDO extends DurableObject<Env> {
       }
     }
   }
+}
+
+function randomToken(bytes: number): string {
+  return [...crypto.getRandomValues(new Uint8Array(bytes))]
+    .map((value) => value.toString(16).padStart(2, '0'))
+    .join('');
 }

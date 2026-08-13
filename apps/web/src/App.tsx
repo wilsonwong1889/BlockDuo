@@ -3,9 +3,14 @@ import { ClassicScreen } from './screens/ClassicScreen';
 import { DuoLobby } from './screens/DuoLobby';
 import { DuoScreen } from './screens/DuoScreen';
 import { HomeScreen } from './screens/HomeScreen';
-import { loadClientId, loadName } from './storage';
+import { SocialScreen } from './screens/SocialScreen';
+import { loadName } from './storage';
 
-export type Route = { name: 'home' } | { name: 'classic' } | { name: 'duo'; code?: string };
+export type Route =
+  | { name: 'home' }
+  | { name: 'classic' }
+  | { name: 'duo'; code?: string }
+  | { name: 'social' };
 
 /**
  * Hash routing, so a duo invite is just a link: opening /#/duo/ABCDEF drops you
@@ -18,6 +23,7 @@ function parseHash(): Route {
   const [head, arg] = hash.split('/');
   if (head === 'classic') return { name: 'classic' };
   if (head === 'duo') return { name: 'duo', code: arg ? arg.toUpperCase() : undefined };
+  if (head === 'social') return { name: 'social' };
   return { name: 'home' };
 }
 
@@ -45,14 +51,21 @@ export function App() {
         <DuoScreen
           key={route.code}
           code={route.code}
-          clientId={loadClientId()}
           name={loadName() || 'Player'}
           onHome={() => go('/')}
         />
       ) : (
         <DuoLobby onEnter={(code) => go(`/duo/${code}`)} onHome={() => go('/')} />
       );
+    case 'social':
+      return <SocialScreen onHome={() => go('/')} />;
     default:
-      return <HomeScreen onClassic={() => go('/classic')} onDuo={() => go('/duo')} />;
+      return (
+        <HomeScreen
+          onClassic={() => go('/classic')}
+          onDuo={() => go('/duo')}
+          onSocial={() => go('/social')}
+        />
+      );
   }
 }

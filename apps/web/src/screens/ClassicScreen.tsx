@@ -112,6 +112,8 @@ export function ClassicScreen({ onHome }: Props) {
             { label: 'Pieces', value: game.state.moveCount },
             { label: 'Best streak', value: game.state.bestStreak },
           ]}
+          reward={game.reward}
+          rewardStatus={game.rewardStatus}
           onPrimary={game.restart}
           onHome={onHome}
         />

@@ -1,3 +1,5 @@
+import type { CoinReward } from '@blokduo/engine';
+
 interface Stat {
   label: string;
   value: string | number;
@@ -6,12 +8,14 @@ interface Stat {
 interface Props {
   title?: string;
   score: number;
-  best: number;
+  best?: number;
   stats: Stat[];
   primaryLabel?: string;
   onPrimary: () => void;
   onHome: () => void;
   note?: string;
+  reward?: CoinReward | null;
+  rewardStatus?: 'pending' | 'awarded' | 'queued' | 'unavailable' | null;
 }
 
 export function GameOver({
@@ -23,8 +27,10 @@ export function GameOver({
   onPrimary,
   onHome,
   note,
+  reward,
+  rewardStatus,
 }: Props) {
-  const isRecord = score > 0 && score >= best;
+  const isRecord = best !== undefined && score > 0 && score >= best;
 
   return (
     <div className="overlay" role="dialog" aria-modal="true" aria-label={title}>
@@ -34,9 +40,29 @@ export function GameOver({
         {isRecord && <div className="record-badge">New best!</div>}
 
         <div className="final-score">{score.toLocaleString()}</div>
-        <div className="final-best">Best {best.toLocaleString()}</div>
+        {best !== undefined && <div className="final-best">Best {best.toLocaleString()}</div>}
 
         {note && <p className="panel-note">{note}</p>}
+
+        {reward && rewardStatus !== 'unavailable' && (
+          <div className="reward-card" aria-live="polite">
+            <div className="reward-total">+{reward.totalCoins.toLocaleString()} coins</div>
+            <div className="reward-detail">
+              {reward.baseCoins.toLocaleString()} base
+              {reward.multiplier > 1 && (
+                <> · ×{reward.multiplier.toFixed(2).replace(/0$/, '')} survival</>
+              )}
+            </div>
+            {rewardStatus === 'pending' && <div className="reward-status">Saving reward…</div>}
+            {rewardStatus === 'queued' && (
+              <div className="reward-status">Saved offline — syncs when you reconnect</div>
+            )}
+          </div>
+        )}
+
+        {rewardStatus === 'unavailable' && (
+          <p className="reward-status">This older saved game has no verifiable move history.</p>
+        )}
 
         <div className="stat-grid">
           {stats.map((s) => (

@@ -8,18 +8,16 @@ import { TurnTimer } from '../components/TurnTimer';
 import { useDuoGame } from '../game/useDuoGame';
 import { useGeometry, usePlacement } from '../game/usePlacement';
 import { inviteUrl } from '../net/config';
-import { loadBest } from '../storage';
 
 interface Props {
   code: string;
-  clientId: string;
   name: string;
   onHome: () => void;
 }
 
-export function DuoScreen({ code, clientId, name, onHome }: Props) {
+export function DuoScreen({ code, name, onHome }: Props) {
   const { geom, boardRef } = useGeometry();
-  const duo = useDuoGame(code, clientId, name);
+  const duo = useDuoGame(code, name);
   const [copied, setCopied] = useState(false);
 
   const placement = usePlacement(
@@ -134,7 +132,6 @@ export function DuoScreen({ code, clientId, name, onHome }: Props) {
 
       <Hud
         score={duo.state.score}
-        best={loadBest()}
         streak={duo.state.streak}
         label="Team score"
       />
@@ -198,11 +195,12 @@ export function DuoScreen({ code, clientId, name, onHome }: Props) {
 
       {snapshot.phase === 'over' && (
         <GameOver
-          title="No moves left"
+          title={snapshot.result?.kind === 'timeout' ? 'Round timed out' : 'No moves left'}
           score={duo.state.score}
-          best={loadBest()}
           note={
-            me && partner
+            snapshot.result?.kind === 'timeout'
+              ? 'The round ended after repeated timeouts, so it does not earn coins or a rank.'
+              : me && partner
               ? `${contributionLine(me.cellsPlaced, partner.cellsPlaced, me.name, partner.name)}`
               : undefined
           }
@@ -211,6 +209,14 @@ export function DuoScreen({ code, clientId, name, onHome }: Props) {
             { label: 'Pieces', value: duo.state.moveCount },
             { label: 'Best streak', value: duo.state.bestStreak },
           ]}
+          reward={snapshot.result?.reward}
+          rewardStatus={
+            snapshot.result?.reward
+              ? snapshot.result.settled
+                ? 'awarded'
+                : 'pending'
+              : null
+          }
           primaryLabel={me?.ready ? 'Waiting for partner…' : 'Rematch'}
           onPrimary={duo.rematch}
           onHome={onHome}

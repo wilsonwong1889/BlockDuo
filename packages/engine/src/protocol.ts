@@ -1,4 +1,5 @@
 import type { Clears } from './board.js';
+import type { CoinReward } from './progression.js';
 import type { WireGameState } from './serde.js';
 
 /**
@@ -51,6 +52,13 @@ export interface RoomSnapshot {
   serverNow: number;
   /** Increments on every applied move; lets a client spot a snapshot it has already seen. */
   version: number;
+  /** Present only after a round ends; timeout endings intentionally earn no reward. */
+  result: {
+    id: string;
+    kind: 'completed' | 'timeout';
+    reward: CoinReward | null;
+    settled: boolean;
+  } | null;
 }
 
 export type ClientMessage =

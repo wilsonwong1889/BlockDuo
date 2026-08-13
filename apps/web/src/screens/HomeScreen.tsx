@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import { isMuted, setMuted } from '../audio/sfx';
+import { useProgress } from '../progress/ProgressContext';
 import { loadBest, saveMuted } from '../storage';
 
 interface Props {
   onClassic: () => void;
   onDuo: () => void;
+  onSocial: () => void;
 }
 
-export function HomeScreen({ onClassic, onDuo }: Props) {
+export function HomeScreen({ onClassic, onDuo, onSocial }: Props) {
   const [muted, setMutedState] = useState(isMuted());
+  const { profile } = useProgress();
   const best = loadBest();
 
   const toggleSound = () => {
@@ -31,6 +34,14 @@ export function HomeScreen({ onClassic, onDuo }: Props) {
         BLOK<span className="accent">DUO</span>
       </h1>
       <p className="home-tagline">Fill rows and columns. Solo, or two-up on one board.</p>
+
+      <button className="home-progress" onClick={onSocial}>
+        <span>
+          <strong>Weekly leaderboard</strong>
+          <small>{profile?.friends.length ?? 0} friends · resets Monday</small>
+        </span>
+        <span className="coin-pill">◆ {profile?.coins.toLocaleString() ?? '—'}</span>
+      </button>
 
       <div className="home-actions">
         <button className="btn primary big" onClick={onClassic}>
@@ -57,6 +68,11 @@ export function HomeScreen({ onClassic, onDuo }: Props) {
           <li>Clear on consecutive turns to build a streak multiplier.</li>
           <li>You get three pieces at a time; a new set arrives when all three are used.</li>
           <li>The game ends when none of your remaining pieces fit anywhere.</li>
+          <li>
+            A finished score becomes coins 1:1, with +0.25× every 25 pieces survived (up to
+            2×).
+          </li>
+          <li>Your best completed Classic game or Duo team game ranks until Monday UTC.</li>
         </ul>
       </details>
     </div>

@@ -19,9 +19,29 @@ if (!codeArg) {
 }
 const code = codeArg.toUpperCase();
 const maxMoves = Number(movesArg ?? 3);
-const origin = (process.env.BLOKDUO_ORIGIN ?? 'http://localhost:8787').replace(/^http/, 'ws');
+const httpOrigin = (process.env.BLOKDUO_ORIGIN ?? 'http://localhost:8787').replace(/\/$/, '');
+const socketOrigin = httpOrigin.replace(/^http/, 'ws');
 
-const socket = new WebSocket(`${origin}/api/room/${code}/ws?clientId=partner-bot&name=Robin`);
+const createdResponse = await fetch(`${httpOrigin}/api/progress/player`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ name: 'Robin' }),
+});
+if (!createdResponse.ok) throw new Error(`Could not create bot profile: ${createdResponse.status}`);
+const created = (await createdResponse.json()) as {
+  identity: { clientId: string; token: string };
+};
+const ticketResponse = await fetch(`${httpOrigin}/api/room/${code}/ticket`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ credentials: created.identity, name: 'Robin' }),
+});
+if (!ticketResponse.ok) throw new Error(`Could not join room: ${ticketResponse.status}`);
+const { ticket } = (await ticketResponse.json()) as { ticket: string };
+
+const socket = new WebSocket(
+  `${socketOrigin}/api/room/${code}/ws?ticket=${encodeURIComponent(ticket)}`,
+);
 
 let seat: number | null = null;
 let played = 0;

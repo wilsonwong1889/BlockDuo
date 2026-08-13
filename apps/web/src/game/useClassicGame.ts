@@ -1,7 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { applyMove, newGame, type GameState, type Move } from '@blokduo/engine';
+import {
+  applyMove,
+  coinReward,
+  newGame,
+  type CoinReward,
+  type GameState,
+  type Move,
+} from '@blokduo/engine';
 import * as sfx from '../audio/sfx';
-import { loadBest, loadGame, saveBest, saveGame } from '../storage';
+import { useProgress } from '../progress/ProgressContext';
+import {
+  loadBest,
+  loadClassicGame,
+  queuePendingClassic,
+  saveBest,
+  saveGame,
+} from '../storage';
 import type { ClearFx, FloatFx } from './fx';
 import { useGameFx } from './useGameFx';
 
@@ -13,19 +27,45 @@ export interface ClassicGame {
   clearFx: ClearFx[];
   floats: FloatFx[];
   shake: number;
+  reward: CoinReward | null;
+  rewardStatus: 'pending' | 'awarded' | 'queued' | 'unavailable' | null;
   commit: (move: Move) => boolean;
   restart: () => void;
   reject: () => void;
 }
 
 export function useClassicGame(): ClassicGame {
-  const [state, setState] = useState<GameState>(() => loadGame() ?? newGame());
+  const [initial] = useState(() => loadClassicGame());
+  const [state, setState] = useState<GameState>(() => initial?.state ?? newGame());
   const [best, setBest] = useState<number>(() => loadBest());
+  const [rewardStatus, setRewardStatus] = useState<ClassicGame['rewardStatus']>(null);
+  const movesRef = useRef<Move[]>(initial?.moves ?? []);
+  const rewardEligibleRef = useRef(initial?.rewardEligible ?? true);
+  const claimKeyRef = useRef('');
+  const { claimClassic } = useProgress();
   const { clearFx, floats, shake, playMove, resetFx } = useGameFx();
 
   // Persistence runs after React commits the move, keeping synchronous storage
   // work out of the pointer-up hot path.
-  useEffect(() => saveGame(state), [state]);
+  useEffect(() => saveGame(state, movesRef.current), [state]);
+
+  useEffect(() => {
+    if (!state.over) return;
+    if (!rewardEligibleRef.current) {
+      setRewardStatus('unavailable');
+      return;
+    }
+
+    const key = `${state.seed}:${JSON.stringify(movesRef.current)}`;
+    if (claimKeyRef.current === key) return;
+    claimKeyRef.current = key;
+    setRewardStatus('pending');
+    const transcript = movesRef.current.map((move) => ({ ...move }));
+    void claimClassic(state.seed, transcript).then((result) => {
+      if (claimKeyRef.current !== key) return;
+      setRewardStatus(result ? 'awarded' : 'queued');
+    });
+  }, [claimClassic, state.over, state.seed]);
 
   // The authoritative state is kept in a ref alongside React state.
   //
@@ -43,6 +83,10 @@ export function useClassicGame(): ClassicGame {
     if (!res.ok) return false;
 
     const { state: next, events } = res.result;
+    movesRef.current = [...movesRef.current, move];
+    if (next.over && rewardEligibleRef.current) {
+      queuePendingClassic({ seed: next.seed, moves: movesRef.current });
+    }
     stateRef.current = next;
     setState(next);
 
@@ -60,11 +104,26 @@ export function useClassicGame(): ClassicGame {
     resetFx();
     saveGame(null);
     const fresh = newGame();
+    movesRef.current = [];
+    rewardEligibleRef.current = true;
+    claimKeyRef.current = '';
+    setRewardStatus(null);
     stateRef.current = fresh;
     setState(fresh);
   }, [resetFx]);
 
   const reject = useCallback(() => sfx.playReject(), []);
 
-  return { state, best, clearFx, floats, shake, commit, restart, reject };
+  return {
+    state,
+    best,
+    clearFx,
+    floats,
+    shake,
+    reward: state.over ? coinReward(state.score, state.moveCount) : null,
+    rewardStatus,
+    commit,
+    restart,
+    reject,
+  };
 }

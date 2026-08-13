@@ -10,6 +10,7 @@ import {
 } from '@blokduo/engine';
 import * as sfx from '../audio/sfx';
 import { roomSocketUrl } from '../net/config';
+import { announceProgressChange, fetchRoomTicket } from '../progress/api';
 import type { ClearFx, FloatFx } from './fx';
 import { useGameFx } from './useGameFx';
 
@@ -34,7 +35,7 @@ export interface DuoGame {
 
 const RECONNECT_DELAYS = [400, 900, 1800, 3000, 5000];
 
-export function useDuoGame(code: string, clientId: string, name: string): DuoGame {
+export function useDuoGame(code: string, name: string): DuoGame {
   const [status, setStatus] = useState<DuoStatus>('connecting');
   const [error, setError] = useState<string | null>(null);
   const [seat, setSeat] = useState<Seat | null>(null);
@@ -58,6 +59,7 @@ export function useDuoGame(code: string, clientId: string, name: string): DuoGam
   const seatRef = useRef<Seat | null>(null);
   const snapshotRef = useRef<RoomSnapshot | null>(null);
   const optimisticRef = useRef<GameState | null>(null);
+  const announcedResult = useRef('');
 
   seatRef.current = seat;
   snapshotRef.current = snapshot;
@@ -91,9 +93,23 @@ export function useDuoGame(code: string, clientId: string, name: string): DuoGam
     let retry = 0;
     const retryTimers: number[] = [];
 
-    const connect = () => {
+    const connect = async () => {
       if (cancelled) return;
-      const mine = new WebSocket(roomSocketUrl(code, clientId, name));
+      let ticket: string;
+      try {
+        ticket = await fetchRoomTicket(code, name);
+      } catch (cause) {
+        if (cancelled) return;
+        setStatus('reconnecting');
+        setError(cause instanceof Error ? cause.message : 'Could not join the room');
+        const delay = RECONNECT_DELAYS[Math.min(retry, RECONNECT_DELAYS.length - 1)];
+        retry += 1;
+        retryTimers.push(window.setTimeout(() => void connect(), delay));
+        return;
+      }
+      if (cancelled) return;
+
+      const mine = new WebSocket(roomSocketUrl(code, ticket));
       socket = mine;
       ws.current = mine;
 
@@ -126,7 +142,7 @@ export function useDuoGame(code: string, clientId: string, name: string): DuoGam
         const delay = RECONNECT_DELAYS[Math.min(retry, RECONNECT_DELAYS.length - 1)];
         retry += 1;
         setStatus('reconnecting');
-        retryTimers.push(window.setTimeout(connect, delay));
+        retryTimers.push(window.setTimeout(() => void connect(), delay));
       };
     };
 
@@ -143,6 +159,16 @@ export function useDuoGame(code: string, clientId: string, name: string): DuoGam
           seatRef.current = msg.seat;
           setSeat(msg.seat);
           adoptSnapshot(msg.snapshot);
+          if (
+            msg.snapshot.phase === 'over' &&
+            msg.snapshot.result?.reward &&
+            msg.snapshot.result.settled &&
+            announcedResult.current !== msg.snapshot.result.id
+          ) {
+            announcedResult.current = msg.snapshot.result.id;
+            playGameOver();
+            announceProgressChange();
+          }
           break;
 
         case 'state':
@@ -194,6 +220,14 @@ export function useDuoGame(code: string, clientId: string, name: string): DuoGam
         case 'over':
           adoptSnapshot(msg.snapshot);
           playGameOver();
+          if (
+            msg.snapshot.result?.reward &&
+            msg.snapshot.result.settled &&
+            announcedResult.current !== msg.snapshot.result.id
+          ) {
+            announcedResult.current = msg.snapshot.result.id;
+            announceProgressChange();
+          }
           break;
 
         case 'error':
@@ -205,7 +239,7 @@ export function useDuoGame(code: string, clientId: string, name: string): DuoGam
       }
     };
 
-    connect();
+    void connect();
 
     return () => {
       cancelled = true;
@@ -215,7 +249,7 @@ export function useDuoGame(code: string, clientId: string, name: string): DuoGam
       if (ws.current === socket) ws.current = null;
       socket?.close(1000, 'leaving');
     };
-  }, [code, clientId, name, playGameOver, schedule, showClear, showPerfect]);
+  }, [code, name, playGameOver, schedule, showClear, showPerfect]);
 
   // ------------------------------------------------------------------- actions
 

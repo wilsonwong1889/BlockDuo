@@ -11,6 +11,10 @@ export default defineWorkersConfig({
     poolOptions: {
       workers: {
         wrangler: { configPath: './wrangler.jsonc' },
+        // This pool version can register a multi-binding Durable Object class
+        // twice when test files start in separate workers. One worker still
+        // runs the files independently and avoids that Miniflare startup race.
+        singleWorker: true,
         // Every test mints its own random room code, so tests cannot see each
         // other's state anyway. Per-test isolation additionally requires every
         // Durable Object to be quiescent between tests, which a room never is:
@@ -21,7 +25,11 @@ export default defineWorkersConfig({
           // minute. Shortened here so the alarm-driven rules can be asserted
           // instead of assumed — still long enough that the other tests, which
           // finish in milliseconds, never trip over them.
-          bindings: { TURN_MS: '1200', RECONNECT_GRACE_MS: '1200' },
+          bindings: {
+            TURN_MS: '1200',
+            RECONNECT_GRACE_MS: '1200',
+            ALLOW_LEGACY_CLIENTS: 'true',
+          },
         },
       },
     },

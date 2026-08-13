@@ -31,6 +31,10 @@
       {
         "name": "ROOM",
         "class_name": "RoomDO"
+      },
+      {
+        "name": "PROGRESS",
+        "class_name": "ProgressDO"
       }
     ]
   },
@@ -38,6 +42,10 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["RoomDO"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["ProgressDO"]
     }
   ]
 }

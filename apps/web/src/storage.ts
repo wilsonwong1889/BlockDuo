@@ -1,4 +1,10 @@
-import { decodeState, encodeState, type GameState, type WireGameState } from '@blokduo/engine';
+import {
+  decodeState,
+  encodeState,
+  type GameState,
+  type Move,
+  type WireGameState,
+} from '@blokduo/engine';
 
 /**
  * Local persistence. Deliberately tolerant: a corrupt or outdated value should
@@ -10,9 +16,29 @@ const KEYS = {
   best: 'blokduo.best',
   muted: 'blokduo.muted',
   saved: 'blokduo.saved.v1',
+  savedV2: 'blokduo.saved.v2',
   name: 'blokduo.name',
   clientId: 'blokduo.clientId',
+  progressIdentity: 'blokduo.progressIdentity.v1',
+  pendingClassic: 'blokduo.pendingClassic.v1',
 } as const;
+
+export interface ProgressIdentity {
+  clientId: string;
+  token: string;
+}
+
+export interface PendingClassicClaim {
+  seed: number;
+  moves: Move[];
+}
+
+export interface SavedClassicGame {
+  state: GameState;
+  moves: Move[];
+  /** Old saves did not include a transcript and cannot be server-verified. */
+  rewardEligible: boolean;
+}
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -28,6 +54,14 @@ function write(key: string, value: unknown) {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {
     // Private browsing, or the quota is full. Not worth interrupting play over.
+  }
+}
+
+function remove(key: string) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Storage is best-effort; gameplay must continue even when it is blocked.
   }
 }
 
@@ -56,26 +90,70 @@ export function loadClientId(): string {
   return fresh;
 }
 
+export const loadProgressIdentity = () =>
+  read<ProgressIdentity | null>(KEYS.progressIdentity, null);
+export const saveProgressIdentity = (identity: ProgressIdentity) =>
+  write(KEYS.progressIdentity, identity);
+export const clearProgressIdentity = () => remove(KEYS.progressIdentity);
+
 /** Persist the in-progress classic game so a refresh or a backgrounded tab does not lose it. */
-export function saveGame(state: GameState | null) {
+export function saveGame(state: GameState | null, moves: Move[] = []) {
   if (!state || state.over) {
-    try {
-      localStorage.removeItem(KEYS.saved);
-    } catch {
-      /* ignore */
-    }
+    remove(KEYS.saved);
+    remove(KEYS.savedV2);
     return;
   }
-  write(KEYS.saved, encodeState(state));
+  write(KEYS.savedV2, { state: encodeState(state), moves });
+  // A successful v2 write makes the legacy save redundant. Removing it also
+  // prevents a stale v1 game from resurfacing after this game is cleared.
+  remove(KEYS.saved);
 }
 
 export function loadGame(): GameState | null {
+  return loadClassicGame()?.state ?? null;
+}
+
+export function loadClassicGame(): SavedClassicGame | null {
+  const modern = read<{ state: WireGameState; moves: Move[] } | null>(KEYS.savedV2, null);
+  if (modern) {
+    try {
+      const state = decodeState(modern.state);
+      const moves = Array.isArray(modern.moves) ? modern.moves : [];
+      if (state.over) return null;
+      return { state, moves, rewardEligible: state.moveCount === moves.length };
+    } catch {
+      return null;
+    }
+  }
+
   const wire = read<WireGameState | null>(KEYS.saved, null);
   if (!wire) return null;
   try {
     const state = decodeState(wire);
-    return state.over ? null : state;
+    return state.over ? null : { state, moves: [], rewardEligible: state.moveCount === 0 };
   } catch {
     return null;
   }
+}
+
+
+export const loadPendingClassic = () =>
+  read<PendingClassicClaim[]>(KEYS.pendingClassic, []);
+
+export function queuePendingClassic(claim: PendingClassicClaim) {
+  const pending = loadPendingClassic();
+  const fingerprint = JSON.stringify([claim.seed, claim.moves]);
+  if (!pending.some((item) => JSON.stringify([item.seed, item.moves]) === fingerprint)) {
+    pending.push(claim);
+    write(KEYS.pendingClassic, pending.slice(-12));
+  }
+}
+
+export function removePendingClassic(claim: PendingClassicClaim) {
+  const fingerprint = JSON.stringify([claim.seed, claim.moves]);
+  const remaining = loadPendingClassic().filter(
+    (item) => JSON.stringify([item.seed, item.moves]) !== fingerprint,
+  );
+  if (remaining.length) write(KEYS.pendingClassic, remaining);
+  else remove(KEYS.pendingClassic);
 }

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { setMuted } from './audio/sfx';
 import { initNative, isNative } from './native';
+import { ProgressProvider } from './progress/ProgressContext';
 import { loadMuted } from './storage';
 import './styles/app.css';
 
@@ -25,6 +26,8 @@ document.addEventListener('gesturestart' as keyof DocumentEventMap, (e) => e.pre
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <ProgressProvider>
+      <App />
+    </ProgressProvider>
   </StrictMode>,
 );

@@ -5,7 +5,7 @@
  * cache and quietly updates in the background. Duo needs the network by
  * definition, so socket and API traffic is never touched.
  */
-const CACHE = 'blokduo-v1';
+const CACHE = 'blokduo-v2';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

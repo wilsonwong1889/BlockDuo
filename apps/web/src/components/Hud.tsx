@@ -54,14 +54,14 @@ function useCountUp(target: number, ms = 420) {
 
 interface Props {
   score: number;
-  best: number;
+  best?: number;
   streak: number;
   label?: string;
 }
 
 export function Hud({ score, best, streak, label = 'Score' }: Props) {
   const shown = useCountUp(score);
-  const beatingBest = score > 0 && score >= best;
+  const beatingBest = best !== undefined && score > 0 && score >= best;
 
   return (
     <div className="hud">
@@ -86,8 +86,8 @@ export function Hud({ score, best, streak, label = 'Score' }: Props) {
       </div>
 
       <div className="hud-block right">
-        <span className="hud-label">Best</span>
-        <span className="hud-best">{best.toLocaleString()}</span>
+        <span className="hud-label">{best === undefined ? 'Mode' : 'Best'}</span>
+        <span className="hud-best">{best === undefined ? 'Co-op' : best.toLocaleString()}</span>
       </div>
     </div>
   );

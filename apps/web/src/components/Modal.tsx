@@ -34,17 +34,28 @@ export function Modal({
     return true;
   });
 
-  // Send focus into the dialog, and put it back where it came from on close.
-  // Without the restore, closing Settings drops focus to the document body and
-  // a keyboard player starts again from the top of the screen behind it.
+  // Whatever was focused when this dialog opened, read during render rather
+  // than in the effect below: React applies autoFocus while committing, so by
+  // the time an effect runs the dialog's own button already holds focus and the
+  // control that opened it has been lost.
+  const openerRef = useRef<HTMLElement | null>(null);
+  if (openerRef.current === null) {
+    openerRef.current = document.activeElement as HTMLElement | null;
+  }
+
+  // Send focus into the dialog, and put it back on close. Without the restore,
+  // closing Settings drops focus to the document body and a keyboard player
+  // starts again from the top of the screen behind it.
   useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
     const panel = panelRef.current;
     if (panel && !panel.contains(document.activeElement)) {
       const [first] = focusableWithin(panel);
       (first ?? panel).focus();
     }
-    return () => previous?.focus?.();
+    return () => {
+      const opener = openerRef.current;
+      if (opener?.isConnected) opener.focus();
+    };
   }, []);
 
   useEffect(() => {

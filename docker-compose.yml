@@ -1,0 +1,83 @@
+# Two services because the game is two things in development: Vite serving the
+# UI with hot reload, and `wrangler dev` running the rooms on the real workerd
+# runtime. In production they are one Worker on one origin — `docker compose
+# --profile preview up` runs that shape instead.
+services:
+  # The room server: /api/room/* and /api/progress/*, plus the Durable Objects
+  # behind them.
+  server:
+    build:
+      context: .
+      target: dev
+    working_dir: /app/apps/server
+    # The assets directory is declared in wrangler.jsonc and must exist before
+    # wrangler starts, even in dev where Vite is the one serving the UI.
+    command: sh -c "mkdir -p /app/apps/web/dist && npx wrangler dev --ip 0.0.0.0 --port 8787"
+    ports:
+      - "8787:8787"
+    volumes:
+      - .:/app
+      # Named volumes shadow the bind mount so the container keeps the Linux
+      # dependency tree it installed instead of the host's macOS one.
+      - root_modules:/app/node_modules
+      - server_modules:/app/apps/server/node_modules
+      - web_modules:/app/apps/web/node_modules
+      - engine_modules:/app/packages/engine/node_modules
+      - mobile_modules:/app/apps/mobile/node_modules
+      # Durable Object storage lives here, so rooms and progress survive a
+      # restart the way they do in production.
+      - wrangler_state:/app/apps/server/.wrangler
+    healthcheck:
+      # Any HTTP response means workerd is listening; a 404 is a fine answer.
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/').then(()=>process.exit(0),()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+
+  # The site. In dev the client resolves the room server to localhost:8787,
+  # which is the published port above — so this reaches it from the browser
+  # without either container knowing about the other.
+  web:
+    build:
+      context: .
+      target: dev
+    working_dir: /app/apps/web
+    command: npx vite --host 0.0.0.0 --port 5173
+    ports:
+      - "5173:5173"
+    environment:
+      # Unset by default: the dev client already knows to use localhost:8787.
+      # Set it to point a container at a deployed Worker instead.
+      VITE_SERVER_URL: ${VITE_SERVER_URL:-}
+    volumes:
+      - .:/app
+      - root_modules:/app/node_modules
+      - web_modules:/app/apps/web/node_modules
+      - server_modules:/app/apps/server/node_modules
+      - engine_modules:/app/packages/engine/node_modules
+      - mobile_modules:/app/apps/mobile/node_modules
+    depends_on:
+      server:
+        condition: service_healthy
+
+  # Production shape: the built site and the rooms as one Worker on one origin,
+  # http://localhost:8787. No bind mount — this serves what was built into the
+  # image, so rebuild it to pick up changes.
+  preview:
+    profiles: ["preview"]
+    build:
+      context: .
+      target: preview
+    ports:
+      - "8787:8787"
+    volumes:
+      - wrangler_state:/app/apps/server/.wrangler
+
+volumes:
+  root_modules:
+  server_modules:
+  web_modules:
+  engine_modules:
+  mobile_modules:
+  wrangler_state:

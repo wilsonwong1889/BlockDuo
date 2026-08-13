@@ -1,0 +1,26 @@
+# Host node_modules holds darwin binaries (esbuild, workerd) that cannot run in
+# the image — the container installs its own.
+node_modules
+**/node_modules
+
+# Build output and local runtime state, all rebuilt or recreated inside.
+dist
+**/dist
+.wrangler
+**/.wrangler
+coverage
+**/coverage
+
+# Native shells: the image never runs Xcode or Gradle.
+apps/mobile/ios
+apps/mobile/android
+
+.git
+.gitignore
+.DS_Store
+*.log
+.env
+.env.local
+Dockerfile
+docker-compose.yml
+.dockerignore

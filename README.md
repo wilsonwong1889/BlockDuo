@@ -48,6 +48,35 @@ you can actually work with while developing:
 npx wrangler dev --var TURN_MS:900000
 ```
 
+### In Docker
+
+Both halves at once, with nothing installed on the host but Docker:
+
+```bash
+docker compose up
+```
+
+The site is on http://localhost:5173 and the rooms on http://localhost:8787,
+which is exactly the pair of ports the dev client already expects. Source is
+bind-mounted, so hot reload works; `node_modules` is not, because the container
+installs a Linux dependency tree and the host's is not one. Durable Object
+storage lives in a named volume, so rooms and progress survive `docker compose
+restart`, and `docker compose down -v` is how you throw them away.
+
+To run the deployed shape instead — the built site and the rooms as one Worker
+on one origin, http://localhost:8787:
+
+```bash
+docker compose --profile preview up --build
+```
+
+That serves what was built into the image, so it wants `--build` to pick up
+changes. It also binds the same port as the dev `server` service, so run one or
+the other. Neither is a deployment: both run the rooms under `wrangler dev`,
+which is the real `workerd` runtime locally — the Worker itself still ships with
+`npm run deploy` ([Deploying](#deploying)). That is also why the image is Debian
+rather than Alpine, since `workerd` is glibc-only.
+
 ### Tests
 
 ```bash

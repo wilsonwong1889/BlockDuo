@@ -4,6 +4,7 @@ import { ClassicScreen } from './screens/ClassicScreen';
 import { DuoLobby } from './screens/DuoLobby';
 import { DuoScreen } from './screens/DuoScreen';
 import { HomeScreen } from './screens/HomeScreen';
+import { ProfileScreen } from './screens/ProfileScreen';
 import { SocialScreen } from './screens/SocialScreen';
 import { loadName } from './storage';
 
@@ -52,13 +53,22 @@ export function App() {
       ) : (
         <DuoLobby onEnter={(code) => go(`/duo/${code}`)} onHome={() => go('/')} />
       );
+    case 'player':
+      return (
+        <ProfileScreen
+          key={route.code ?? 'me'}
+          code={route.code ?? null}
+          onHome={() => go('/')}
+        />
+      );
     case 'social':
-      return <SocialScreen onHome={() => go('/')} />;
+      return <SocialScreen onHome={() => go('/')} onPlayer={(c) => go(`/player/${c}`)} />;
     default:
       return (
         <HomeScreen
           onClassic={() => go('/classic')}
           onNewClassic={() => go('/classic/new')}
+          onProfile={() => go('/player')}
           onDuo={() => go('/duo')}
           onSocial={() => go('/social')}
         />

@@ -5,6 +5,7 @@ import type {
   LeaderboardView,
   Move,
   ProgressProfile,
+  PublicProfile,
 } from '@blokduo/engine';
 import { apiUrl } from '../net/config';
 import {
@@ -103,6 +104,23 @@ export function fetchLeaderboard(
   scope: LeaderboardScope,
 ): Promise<LeaderboardView> {
   return authenticated('/api/progress/leaderboard', { mode, scope });
+}
+
+/** Public, so it carries no credentials and needs no identity to have been made. */
+export async function fetchPublicProfile(friendCode: string): Promise<PublicProfile> {
+  let response: Response;
+  try {
+    response = await fetch(apiUrl(`/api/progress/player/${encodeURIComponent(friendCode)}`));
+  } catch {
+    throw new ProgressApiError('Could not reach the progression server', 0);
+  }
+  const payload = (await response.json().catch(() => null)) as
+    | (PublicProfile & { error?: string })
+    | null;
+  if (!response.ok) {
+    throw new ProgressApiError(payload?.error ?? 'No player with that code', response.status);
+  }
+  return payload as PublicProfile;
 }
 
 export function claimClassic(seed: number, moves: Move[]): Promise<ClaimResult> {

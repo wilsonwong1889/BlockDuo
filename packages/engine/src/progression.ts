@@ -37,6 +37,49 @@ export interface FriendProfile {
 /** @deprecated Prefer FriendProfile. */
 export type FriendView = FriendProfile;
 
+/**
+ * Lifetime totals for one player.
+ *
+ * Every number here is derived on the server — Classic from replaying the
+ * transcript, Duo from the room's own authoritative state — so a profile can be
+ * shown to other people without showing them something a client made up.
+ */
+export interface PlayerStats {
+  gamesPlayed: number;
+  classicGames: number;
+  duoGames: number;
+  /** Best single game, either mode. */
+  bestScore: number;
+  totalScore: number;
+  totalLines: number;
+  /** Longest clearing streak reached in any one game. */
+  bestStreak: number;
+  coins: number;
+}
+
+export const EMPTY_PLAYER_STATS: PlayerStats = {
+  gamesPlayed: 0,
+  classicGames: 0,
+  duoGames: 0,
+  bestScore: 0,
+  totalScore: 0,
+  totalLines: 0,
+  bestStreak: 0,
+  coins: 0,
+};
+
+/** What anyone may see about a player. Deliberately no identifiers to act with. */
+export interface PublicProfile {
+  friendCode: string;
+  name: string;
+  joinedAt: number;
+  stats: PlayerStats;
+}
+
+export function averageGameScore(stats: PlayerStats): number {
+  return stats.gamesPlayed > 0 ? Math.round(stats.totalScore / stats.gamesPlayed) : 0;
+}
+
 export interface ProgressProfile {
   clientId: string;
   friendCode: string;
@@ -57,6 +100,11 @@ export interface LeaderboardEntry {
   achievedAt: number;
   isYou: boolean;
   isFriend: boolean;
+  /**
+   * The public codes behind this row, in the same order as the names. A Duo row
+   * has two and so opens no single profile; a solo row has one.
+   */
+  friendCodes?: string[];
 }
 
 export interface LeaderboardBoard {

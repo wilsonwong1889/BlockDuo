@@ -14,6 +14,7 @@ import {
   type LeaderboardView,
   type Move,
   type ProgressProfile,
+  type PublicProfile,
   type RoomSnapshot,
   type ServerMessage,
 } from '@blokduo/engine';
@@ -390,6 +391,73 @@ describe('progress friendships', () => {
     for (const weekEntry of board.body.weekly.entries) {
       expect(board.body.allTime.entries.some((entry) => entry.name === weekEntry.name)).toBe(true);
     }
+  });
+
+  it('publishes a profile anyone can read, with server-counted totals', async () => {
+    const player = await createPlayer(`Public ${crypto.randomUUID().slice(0, 8)}`);
+    const game = completedClassic(gameSeed(0x0bacc11));
+    await post<ClaimResult>('/api/progress/classic', {
+      ...player.identity,
+      seed: game.state.seed,
+      moves: game.moves,
+    });
+
+    // No credentials: this is the whole point of a public profile.
+    const response = await SELF.fetch(
+      `${ORIGIN}/api/progress/player/${player.profile.friendCode}`,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as PublicProfile;
+
+    expect(body).toMatchObject({
+      friendCode: player.profile.friendCode,
+      name: player.profile.name,
+    });
+    expect(body.stats).toMatchObject({
+      gamesPlayed: 1,
+      classicGames: 1,
+      duoGames: 0,
+      bestScore: game.state.score,
+      totalScore: game.state.score,
+      totalLines: game.state.linesCleared,
+      bestStreak: game.state.bestStreak,
+    });
+    // Nothing that could be used to act as this player may appear here.
+    expect(JSON.stringify(body)).not.toContain(player.identity.clientId);
+    expect(JSON.stringify(body)).not.toContain(player.identity.token);
+  });
+
+  it('recovers a best score earned before profiles counted anything', async () => {
+    const player = await createPlayer(`Veteran ${crypto.randomUUID().slice(0, 8)}`);
+    const game = completedClassic(gameSeed(0x0e7e5a2));
+    await post<ClaimResult>('/api/progress/classic', {
+      ...player.identity,
+      seed: game.state.seed,
+      moves: game.moves,
+    });
+
+    // What an older build left behind: a score on the board, a profile with no
+    // totals on it, and no migration marker.
+    const stub = env.PROGRESS.get(env.PROGRESS.idFromName('global'));
+    await runInDurableObject(stub, async (_instance, state) => {
+      await state.storage.delete('migration:stats:v1');
+      const key = `profile:${player.identity.clientId}`;
+      const stored = await state.storage.get<Record<string, unknown>>(key);
+      delete stored!.bestScore;
+      delete stored!.totalScore;
+      await state.storage.put(key, stored);
+    });
+
+    const response = await SELF.fetch(
+      `${ORIGIN}/api/progress/player/${player.profile.friendCode}`,
+    );
+    const body = (await response.json()) as PublicProfile;
+    expect(body.stats.bestScore).toBe(game.state.score);
+  });
+
+  it('refuses a profile for a code that does not exist', async () => {
+    const response = await SELF.fetch(`${ORIGIN}/api/progress/player/BD-NOTREAL1`);
+    expect(response.status).toBe(404);
   });
 
   it('leaves an already-migrated ledger alone', async () => {

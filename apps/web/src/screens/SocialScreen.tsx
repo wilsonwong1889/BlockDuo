@@ -9,9 +9,10 @@ import { useProgress } from '../progress/ProgressContext';
 
 interface Props {
   onHome: () => void;
+  onPlayer: (friendCode: string) => void;
 }
 
-export function SocialScreen({ onHome }: Props) {
+export function SocialScreen({ onHome, onPlayer }: Props) {
   const progress = useProgress();
   const [mode, setMode] = useState<GameMode>('classic');
   const [scope, setScope] = useState<LeaderboardScope>('global');
@@ -164,10 +165,14 @@ export function SocialScreen({ onHome }: Props) {
           <div className="friend-list">
             {progress.profile.friends.map((friend) => (
               <div className="friend-row" key={friend.friendCode}>
-                <span>
+                <button
+                  type="button"
+                  className="friend-open"
+                  onClick={() => onPlayer(friend.friendCode)}
+                >
                   <strong>{friend.name}</strong>
                   <small>{friend.friendCode}</small>
-                </span>
+                </button>
                 <button
                   className="link-btn danger-link"
                   onClick={() => void remove(friend.friendCode)}
@@ -213,6 +218,7 @@ export function SocialScreen({ onHome }: Props) {
           title="All time"
           subtitle="Every week that has ever been played"
           board={board?.allTime ?? null}
+          onPlayer={onPlayer}
           loading={!board && !message}
           emptyText={
             scope === 'friends'
@@ -225,6 +231,7 @@ export function SocialScreen({ onHome }: Props) {
           title="This week"
           subtitle={resetLabel ? `Resets ${resetLabel}` : 'Loading this week…'}
           board={board?.weekly ?? null}
+          onPlayer={onPlayer}
           loading={!board && !message}
           emptyText={
             scope === 'friends'

@@ -67,6 +67,14 @@ export default {
       return resultJson(await progressStub(env).createPlayer(String(body.name ?? 'Player')));
     }
 
+    // The one progression route with no credentials: a public profile, keyed by
+    // the code players already hand out. GET because it is a public resource
+    // with nothing secret in the path — the token never appears here.
+    const publicProfileMatch = url.pathname.match(/^\/api\/progress\/player\/([A-Za-z0-9-]{1,16})$/);
+    if (publicProfileMatch && request.method === 'GET') {
+      return resultJson(await progressStub(env).publicProfile(publicProfileMatch[1]));
+    }
+
     if (url.pathname.startsWith('/api/progress/') && request.method === 'POST') {
       const body = await bodyOf(request);
       if (!body) return json({ error: 'Invalid JSON body' }, 400);

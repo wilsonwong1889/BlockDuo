@@ -22,6 +22,11 @@ describe('parseHash', () => {
     expect(parseHash('#/duo')).toEqual({ name: 'duo', code: undefined });
   });
 
+  it('reads a player profile, with and without a code', () => {
+    expect(parseHash('#/player/bd-abc123')).toEqual({ name: 'player', code: 'BD-ABC123' });
+    expect(parseHash('#/player')).toEqual({ name: 'player', code: undefined });
+  });
+
   it('falls back to home for an empty or unknown hash', () => {
     expect(parseHash('')).toEqual({ name: 'home' });
     expect(parseHash('#/')).toEqual({ name: 'home' });

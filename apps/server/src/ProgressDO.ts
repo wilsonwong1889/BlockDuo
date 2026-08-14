@@ -12,7 +12,9 @@ import {
   type LeaderboardScope,
   type LeaderboardView,
   type Move,
+  type PlayerStats,
   type ProgressProfile,
+  type PublicProfile,
 } from '@blokduo/engine';
 
 const FRIEND_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -43,6 +45,44 @@ interface StoredProfile {
   friendIds: string[];
   createdAt: number;
   updatedAt: number;
+  /** Lifetime totals. Absent on profiles created before profiles were public. */
+  classicGames?: number;
+  duoGames?: number;
+  bestScore?: number;
+  totalScore?: number;
+  totalLines?: number;
+  bestStreak?: number;
+}
+
+/** One finished, server-verified game, folded into a profile's totals. */
+interface GameOutcome {
+  mode: GameMode;
+  score: number;
+  lines: number;
+  bestStreak: number;
+}
+
+function recordOutcome(profile: StoredProfile, outcome: GameOutcome): void {
+  profile.gamesPlayed += 1;
+  if (outcome.mode === 'classic') profile.classicGames = (profile.classicGames ?? 0) + 1;
+  else profile.duoGames = (profile.duoGames ?? 0) + 1;
+  profile.bestScore = Math.max(profile.bestScore ?? 0, outcome.score);
+  profile.totalScore = (profile.totalScore ?? 0) + outcome.score;
+  profile.totalLines = (profile.totalLines ?? 0) + outcome.lines;
+  profile.bestStreak = Math.max(profile.bestStreak ?? 0, outcome.bestStreak);
+}
+
+function statsOf(profile: StoredProfile): PlayerStats {
+  return {
+    gamesPlayed: profile.gamesPlayed,
+    classicGames: profile.classicGames ?? 0,
+    duoGames: profile.duoGames ?? 0,
+    bestScore: profile.bestScore ?? 0,
+    totalScore: profile.totalScore ?? 0,
+    totalLines: profile.totalLines ?? 0,
+    bestStreak: profile.bestStreak ?? 0,
+    coins: profile.coins,
+  };
 }
 
 /**
@@ -67,6 +107,9 @@ const ALL_TIME = 'alltime';
 /** Set once the pre-existing weeks have been folded into the all-time window. */
 const ALL_TIME_BACKFILL_KEY = 'migration:alltime:v1';
 
+/** Set once profiles have taken their best score from the boards. */
+const STATS_BACKFILL_KEY = 'migration:stats:v1';
+
 /** Durable Object storage takes at most 128 keys in one put. */
 const MAX_PUT_KEYS = 100;
 
@@ -81,6 +124,9 @@ interface DuoSettlement {
   score: number;
   moveCount: number;
   ranked: boolean;
+  /** From the room's own state. Absent from a Worker deployed before profiles. */
+  lines?: number;
+  bestStreak?: number;
 }
 
 const ok = <T>(value: T): ProgressResult<T> => ({ ok: true, value });
@@ -268,7 +314,7 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     if (mode !== 'classic' && mode !== 'duo') return fail(400, 'Unknown leaderboard mode');
     if (scope !== 'global' && scope !== 'friends') return fail(400, 'Unknown leaderboard scope');
 
-    await this.backfillAllTime();
+    await this.ensureMigrations();
 
     const week = weekWindow();
     const allowed = new Set([profile.clientId, ...profile.friendIds]);
@@ -306,6 +352,18 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       const self =
         selfIndex >= LEADERBOARD_LIMIT ? toEntry(filtered[selfIndex], selfIndex) : null;
 
+      // Resolved for the visible rows only, and read rather than stored on the
+      // record, so every score already on the board gets one without migrating.
+      const shown = [...filtered.slice(0, LEADERBOARD_LIMIT)];
+      if (selfIndex >= LEADERBOARD_LIMIT) shown.push(filtered[selfIndex]);
+      const codes = await this.friendCodesFor(shown.flatMap((record) => record.participantIds));
+      const attach = (entry: LeaderboardEntry, record: RankedScore) => {
+        const resolved = record.participantIds.map((id) => codes.get(id));
+        if (resolved.every((code): code is string => !!code)) entry.friendCodes = resolved;
+      };
+      entries.forEach((entry, index) => attach(entry, filtered[index]));
+      if (self) attach(self, filtered[selfIndex]);
+
       return { entries, selfRank: selfIndex < 0 ? null : selfIndex + 1, self };
     };
 
@@ -314,6 +372,34 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       week,
       allTime: await board(ALL_TIME),
       weekly: await board(week.key),
+    });
+  }
+
+  /**
+   * A player's profile as anyone may see it.
+   *
+   * Keyed by friend code, which is the identifier players already hand out;
+   * the clientId is never accepted here and never returned, so a public link
+   * cannot be turned into anything that acts on the account. No credentials are
+   * required — that is what makes it public.
+   */
+  async publicProfile(rawCode: string): Promise<ProgressResult<PublicProfile>> {
+    await this.ensureMigrations();
+
+    const friendCode = normalizeFriendCode(rawCode);
+    if (!friendCode) return fail(400, 'That is not a player code');
+
+    const clientId = await this.ctx.storage.get<string>(codeKey(friendCode));
+    const profile = clientId
+      ? await this.ctx.storage.get<StoredProfile>(profileKey(clientId))
+      : null;
+    if (!profile) return fail(404, 'No player with that code');
+
+    return ok({
+      friendCode: profile.friendCode,
+      name: profile.name,
+      joinedAt: profile.createdAt,
+      stats: statsOf(profile),
     });
   }
 
@@ -371,7 +457,12 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     const ranked = await this.rankedWrites(record);
 
     profile.coins = safeAdd(profile.coins, reward.totalCoins);
-    profile.gamesPlayed += 1;
+    recordOutcome(profile, {
+      mode: 'classic',
+      score: finalState.score,
+      lines: finalState.linesCleared,
+      bestStreak: finalState.bestStreak,
+    });
     profile.updatedAt = Date.now();
     const writes: Record<string, StoredProfile | StoredClaim | RankedScore> = {
       ...ranked.writes,
@@ -409,7 +500,14 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     const writes: Record<string, StoredProfile | StoredClaim | RankedScore> = {};
     for (const profile of profiles as StoredProfile[]) {
       profile.coins = safeAdd(profile.coins, reward.totalCoins);
-      profile.gamesPlayed += 1;
+      // Duo is co-operative: the team's board is the one both players played,
+      // so both take the same result rather than a share of it.
+      recordOutcome(profile, {
+        mode: 'duo',
+        score: reward.score,
+        lines: Math.max(0, Math.floor(input.lines ?? 0)),
+        bestStreak: Math.max(0, Math.floor(input.bestStreak ?? 0)),
+      });
       profile.updatedAt = now;
       writes[profileKey(profile.clientId)] = profile;
     }
@@ -438,6 +536,76 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     writes[claimKey] = { reward, weeklyBest };
     await this.ctx.storage.put(writes);
     return ok(true);
+  }
+
+  /**
+   * Give profiles the one lifetime stat the ledger can still prove.
+   *
+   * Totals only began being counted when profiles became public, so a player
+   * with games behind them had "Games played 1" beside a best score of zero.
+   * The all-time board is a record of everyone's best game, so that number can
+   * be recovered exactly. Totals, lines and streaks cannot — nothing ever stored
+   * them — and they start accumulating from here.
+   */
+  private async backfillStats(): Promise<void> {
+    if (await this.ctx.storage.get(STATS_BACKFILL_KEY)) return;
+
+    await this.mutate(async () => {
+      if (await this.ctx.storage.get(STATS_BACKFILL_KEY)) return;
+
+      const best = new Map<string, number>();
+      for (const mode of ['classic', 'duo'] as const) {
+        const records = await this.ctx.storage.list<RankedScore>({
+          prefix: scorePrefix(ALL_TIME, mode),
+        });
+        for (const record of records.values()) {
+          // A Duo record belongs to both players; the team's board is the one
+          // each of them played.
+          for (const id of record.participantIds ?? []) {
+            best.set(id, Math.max(best.get(id) ?? 0, record.score));
+          }
+        }
+      }
+
+      const ids = [...best.keys()];
+      for (let i = 0; i < ids.length; i += MAX_PUT_KEYS) {
+        const slice = ids.slice(i, i + MAX_PUT_KEYS);
+        const found = await this.ctx.storage.get<StoredProfile>(slice.map(profileKey));
+        const writes: Record<string, StoredProfile> = {};
+        for (const profile of found.values()) {
+          if (!profile?.clientId) continue;
+          const recovered = best.get(profile.clientId) ?? 0;
+          if (recovered <= (profile.bestScore ?? 0)) continue;
+          profile.bestScore = recovered;
+          writes[profileKey(profile.clientId)] = profile;
+        }
+        if (Object.keys(writes).length) await this.ctx.storage.put(writes);
+      }
+
+      await this.ctx.storage.put(STATS_BACKFILL_KEY, Date.now());
+    });
+  }
+
+  /** Every repair the stored ledger might still need, in dependency order. */
+  private async ensureMigrations(): Promise<void> {
+    await this.backfillAllTime();
+    await this.backfillStats();
+  }
+
+  /** clientId to public code, batched, for the rows actually being shown. */
+  private async friendCodesFor(clientIds: string[]): Promise<Map<string, string>> {
+    const unique = [...new Set(clientIds)];
+    const codes = new Map<string, string>();
+
+    // Durable Object storage reads at most 128 keys at a time.
+    for (let i = 0; i < unique.length; i += MAX_PUT_KEYS) {
+      const slice = unique.slice(i, i + MAX_PUT_KEYS);
+      const found = await this.ctx.storage.get<StoredProfile>(slice.map(profileKey));
+      for (const profile of found.values()) {
+        if (profile?.clientId) codes.set(profile.clientId, profile.friendCode);
+      }
+    }
+    return codes;
   }
 
   private async authenticateRecord(

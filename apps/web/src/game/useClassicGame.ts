@@ -13,7 +13,6 @@ import {
   loadBest,
   loadClassicGame,
   queuePendingClassic,
-  recordCompletedGame,
   saveBest,
   saveGame,
 } from '../storage';
@@ -92,12 +91,6 @@ export function useClassicGame(startFresh = false): ClassicGame {
     const persistCompletion = () => {
       if (persisted) return;
       persisted = true;
-      recordCompletedGame({
-        id: `classic:${state.seed}`,
-        score: state.score,
-        highestCombo: state.bestStreak,
-        lines: state.linesCleared,
-      });
       if (rewardEligibleRef.current) queuePendingClassic({ seed: state.seed, moves: transcript });
     };
 

@@ -1374,6 +1374,56 @@ button {
     inset 0 0 0 1px rgba(110, 231, 255, 0.3);
 }
 
+/* ------------------------------------------------------------- profiles */
+
+.profile-display-name {
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.profile-since {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font-size: 0.65rem;
+}
+
+/* A leaderboard row that opens a profile is a button, so it has to be reset
+   back to looking like the row it replaced. */
+.leader-row.tappable {
+  width: 100%;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+
+.leader-row.tappable:hover {
+  filter: brightness(1.15);
+}
+
+.leader-row.tappable:active {
+  transform: scale(0.99);
+}
+
+.friend-open {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+
+.friend-open small {
+  color: var(--muted);
+  font-size: 0.65rem;
+}
+
 .join-peek {
   display: flex;
   align-items: center;

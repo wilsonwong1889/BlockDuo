@@ -2,27 +2,26 @@ import { useState } from 'react';
 import { unlockAudio } from '../audio/sfx';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { SettingsPanel } from '../components/SettingsPanel';
-import { StatisticsPanel } from '../components/StatisticsPanel';
 import { updateAppSettings } from '../preferences';
 import { useProgress } from '../progress/ProgressContext';
 import {
   loadAppSettings,
   loadBest,
   loadClassicGame,
-  loadStatistics,
   type AppSettings,
 } from '../storage';
 
 interface Props {
   onClassic: () => void;
   onNewClassic: () => void;
+  onProfile: () => void;
   onDuo: () => void;
   onSocial: () => void;
 }
 
-export function HomeScreen({ onClassic, onNewClassic, onDuo, onSocial }: Props) {
+export function HomeScreen({ onClassic, onNewClassic, onDuo, onSocial, onProfile }: Props) {
   const [settings, setSettings] = useState(loadAppSettings);
-  const [panel, setPanel] = useState<'settings' | 'statistics' | 'new-game' | null>(null);
+  const [panel, setPanel] = useState<'settings' | 'new-game' | null>(null);
   const { profile } = useProgress();
 
   // Read once on mount, not on every render: loadClassicGame parses a whole
@@ -32,9 +31,8 @@ export function HomeScreen({ onClassic, onNewClassic, onDuo, onSocial }: Props) 
   const [initial] = useState(() => ({
     best: loadBest(),
     game: loadClassicGame(),
-    statistics: loadStatistics(),
   }));
-  const { best, game: savedGame, statistics } = initial;
+  const { best, game: savedGame } = initial;
   const hasSavedProgress = !!savedGame && savedGame.state.moveCount > 0;
 
   const changeSettings = (next: AppSettings) => {
@@ -106,8 +104,8 @@ export function HomeScreen({ onClassic, onNewClassic, onDuo, onSocial }: Props) 
       {best > 0 && <p className="home-best">Best {best.toLocaleString()}</p>}
 
       <div className="home-tools" aria-label="More options">
-        <button className="link-btn" onClick={() => setPanel('statistics')}>
-          Statistics
+        <button className="link-btn" onClick={onProfile}>
+          Your profile
         </button>
         <span aria-hidden>·</span>
         <button className="link-btn" onClick={() => setPanel('settings')}>
@@ -139,9 +137,6 @@ export function HomeScreen({ onClassic, onNewClassic, onDuo, onSocial }: Props) 
           onChange={changeSettings}
           onClose={() => setPanel(null)}
         />
-      )}
-      {panel === 'statistics' && (
-        <StatisticsPanel statistics={statistics} onClose={() => setPanel(null)} />
       )}
       {panel === 'new-game' && (
         <ConfirmDialog

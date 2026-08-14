@@ -11,7 +11,6 @@ import { useDuoGame } from '../game/useDuoGame';
 import { useGeometry, usePlacement } from '../game/usePlacement';
 import { useBackHandler } from '../native/useBackHandler';
 import { inviteUrl } from '../net/config';
-import { recordCompletedGame } from '../storage';
 
 interface Props {
   code: string;
@@ -41,17 +40,6 @@ export function DuoScreen({ code, name, onHome }: Props) {
   const partner = snapshot?.players[partnerSeat] ?? null;
   // A joiner inherits the host's choice, so the room is the authority on it.
   const mode: DuoMode = isDuoMode(snapshot?.mode) ? snapshot.mode : DEFAULT_DUO_MODE;
-
-  useEffect(() => {
-    if (snapshot?.phase !== 'over' || !snapshot.result) return;
-    recordCompletedGame({
-      id: `duo:${snapshot.result.id}`,
-      score: duo.state?.score ?? 0,
-      highestCombo: duo.state?.bestStreak ?? 0,
-      lines: duo.state?.linesCleared ?? 0,
-      duoWin: snapshot.result.kind === 'completed',
-    });
-  }, [duo.state, snapshot]);
 
   const requestLeave = useCallback(() => {
     if (snapshot && snapshot.phase !== 'over') setConfirmLeave(true);

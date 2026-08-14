@@ -698,6 +698,10 @@ export class RoomDO extends DurableObject<Env> {
         moveCount: state.moveCount,
         // Classic rooms are played for coins alone; only Ranked reaches a board.
         ranked: duoModeRanks(this.roomMode(room)),
+        // Straight off the room's own state, so a public profile never has to
+        // take a client's word for what a Duo game achieved.
+        lines: state.linesCleared,
+        bestStreak: state.bestStreak,
       });
       if (settled.ok) {
         room.result.settled = true;

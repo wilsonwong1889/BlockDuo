@@ -8,11 +8,6 @@ import {
   type Move,
   type WireGameState,
 } from '@blokduo/engine';
-import {
-  addCompletedGame,
-  type CompletedGame,
-  type GameStatistics,
-} from './stats';
 
 /**
  * Local persistence. Deliberately tolerant: a corrupt or outdated value should
@@ -30,7 +25,6 @@ const KEYS = {
   progressIdentity: 'blokduo.progressIdentity.v1',
   pendingClassic: 'blokduo.pendingClassic.v1',
   settings: 'blokduo.settings.v1',
-  statistics: 'blokduo.statistics.v1',
   duoMode: 'blokduo.duoMode.v1',
 } as const;
 
@@ -221,23 +215,4 @@ export function removePendingClassic(claim: PendingClassicClaim) {
   else remove(KEYS.pendingClassic);
 }
 
-export function loadStatistics(): GameStatistics {
-  const saved = read<Partial<GameStatistics> | null>(KEYS.statistics, null);
-  const count = (value: unknown) =>
-    typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : 0;
-  return {
-    gamesPlayed: count(saved?.gamesPlayed),
-    highestCombo: count(saved?.highestCombo),
-    totalLines: count(saved?.totalLines),
-    totalScore: count(saved?.totalScore),
-    duoWins: count(saved?.duoWins),
-    recordedGameIds: Array.isArray(saved?.recordedGameIds) ? saved.recordedGameIds : [],
-  };
-}
 
-export function recordCompletedGame(game: CompletedGame): GameStatistics {
-  const current = loadStatistics();
-  const next = addCompletedGame(current, game);
-  if (next !== current) write(KEYS.statistics, next);
-  return next;
-}

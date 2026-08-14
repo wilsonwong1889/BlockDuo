@@ -9,6 +9,7 @@ import {
   getPiece,
   newSession,
   POWER_COSTS,
+  MAX_AD_SPINS_PER_DAY,
   WHEEL_COST_COINS,
   WHEEL_SEGMENTS,
   legalAnchors,
@@ -562,11 +563,52 @@ describe('progress friendships', () => {
     expect(tomorrow.body.free).toBe(true);
   });
 
+  it('sells three spins a day for adverts, then stops', async () => {
+    const player = await createPlayer(`Viewer ${crypto.randomUUID().slice(0, 8)}`);
+
+    // Free spin first: an advert is never asked for while one is waiting.
+    const free = await post<WheelResult>('/api/progress/wheel', {
+      ...player.identity,
+      watchedAd: true,
+    });
+    expect(free.body.source).toBe('free');
+
+    for (let i = 1; i <= MAX_AD_SPINS_PER_DAY; i++) {
+      const spin = await post<WheelResult>('/api/progress/wheel', {
+        ...player.identity,
+        watchedAd: true,
+      });
+      expect(spin.body.source).toBe('ad');
+      expect(spin.body.profile.adSpinsLeft).toBe(MAX_AD_SPINS_PER_DAY - i);
+      expect(spin.body.profile.coins).toBe(0);
+    }
+
+    // Allowance gone, wallet empty: watching another changes nothing.
+    const over = await post<{ error: string }>('/api/progress/wheel', {
+      ...player.identity,
+      watchedAd: true,
+    });
+    expect(over.response.status).toBe(400);
+
+    // Tomorrow the allowance is whole again.
+    const stub = env.PROGRESS.get(env.PROGRESS.idFromName('global'));
+    await runInDurableObject(stub, async (_i, state) => {
+      const key = `profile:${player.identity.clientId}`;
+      const stored = await state.storage.get<Record<string, unknown>>(key);
+      await state.storage.put(key, { ...stored, adSpinDay: '2020-01-01', freeSpinDay: '2020-01-01' });
+    });
+    expect((await getProfile(player)).adSpinsLeft).toBe(MAX_AD_SPINS_PER_DAY);
+  });
+
   it('turns coins into gems on the wheel, and refuses a spin nobody can afford', async () => {
     const player = await createPlayer(`Spinner ${crypto.randomUUID().slice(0, 8)}`);
 
-    // Take the free spin out of the way; this test is about the paid one.
+    // Take the free spin and the advert allowance out of the way; this test is
+    // about the coin-paid spin.
     await post<WheelResult>('/api/progress/wheel', { ...player.identity });
+    for (let i = 0; i < MAX_AD_SPINS_PER_DAY; i++) {
+      await post<WheelResult>('/api/progress/wheel', { ...player.identity, watchedAd: true });
+    }
 
     const broke = await post<{ error: string }>('/api/progress/wheel', { ...player.identity });
     expect(broke.response.status).toBe(400);
@@ -582,6 +624,7 @@ describe('progress friendships', () => {
     const spin = await post<WheelResult>('/api/progress/wheel', { ...player.identity });
     expect(spin.response.status).toBe(200);
     expect(spin.body.free).toBe(false);
+    expect(spin.body.source).toBe('coins');
     expect(WHEEL_SEGMENTS.map((s) => s.gems)).toContain(spin.body.gems);
     expect(spin.body.profile.coins).toBe(25);
   });

@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import {
+  MAX_AD_SPINS_PER_DAY,
   WHEEL_COST_COINS,
   WHEEL_SEGMENTS,
   WHEEL_TOTAL_WEIGHT,
   POWER_COSTS,
 } from '@blokduo/engine';
+import { showRewardedAd } from '../ads';
 import { useProgress } from '../progress/ProgressContext';
 
 interface Props {
@@ -23,13 +25,26 @@ export function WheelScreen({ onHome }: Props) {
   // A free spin is always affordable, which is the whole point of it.
   const affordable = freeSpin || coins >= WHEEL_COST_COINS;
 
-  const spin = async () => {
-    if (spinning || !affordable) return;
+  const adSpinsLeft = profile?.adSpinsLeft ?? 0;
+
+  const spin = async (viaAd = false) => {
+    if (spinning) return;
+    if (!viaAd && !affordable) return;
+
+    if (viaAd) {
+      setSpinning(true);
+      const advert = await showRewardedAd('wheel-spin');
+      if (!advert.watched) {
+        setSpinning(false);
+        setError('The advert did not finish, so no spin this time');
+        return;
+      }
+    }
     setSpinning(true);
     setWon(null);
     setError(null);
     try {
-      const result = await spinWheel();
+      const result = await spinWheel(viaAd);
       setWasFree(result.free);
       // Held back so the wheel is seen to turn before it says what it landed
       // on; the server already decided, this is only the telling.
@@ -68,7 +83,7 @@ export function WheelScreen({ onHome }: Props) {
 
         <button
           className={`btn primary big${freeSpin ? ' free' : ''}`}
-          onClick={spin}
+          onClick={() => void spin(false)}
           disabled={spinning || !affordable}
         >
           {spinning
@@ -82,6 +97,15 @@ export function WheelScreen({ onHome }: Props) {
               : `You have ${coins.toLocaleString()} coin${coins === 1 ? '' : 's'}`}
           </span>
         </button>
+        {!freeSpin && adSpinsLeft > 0 && (
+          <button className="btn" onClick={() => void spin(true)} disabled={spinning}>
+            Watch an advert for a spin
+            <span className="btn-sub">
+              {adSpinsLeft} of {MAX_AD_SPINS_PER_DAY} left today
+            </span>
+          </button>
+        )}
+
         {!freeSpin && !affordable && (
           <p className="panel-note">
             {(WHEEL_COST_COINS - coins).toLocaleString()} more coins, or come back tomorrow for a

@@ -104,7 +104,9 @@ export default {
         );
       }
       if (url.pathname === '/api/progress/wheel') {
-        return resultJson(await progress.spinWheel(credentials));
+        // `watchedAd` is the client's word for now. When a network is wired
+        // up its verification token arrives here and is checked instead.
+        return resultJson(await progress.spinWheel(credentials, body.watchedAd === true));
       }
 
       if (url.pathname === '/api/progress/gems/spend') {

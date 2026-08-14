@@ -9,6 +9,9 @@ import {
   MAX_UNDOS,
   newSession,
   POWER_COSTS,
+  canRevive,
+  MAX_REVIVES,
+  REVIVE_ROWS,
   replayActions,
   wheelSegment,
   WHEEL_SEGMENTS,
@@ -237,5 +240,84 @@ describe('replayActions', () => {
     expect(() => replayActions(SEED, [{ slot: 0, row: 7, col: 7 }, { slot: 0, row: 7, col: 7 }])).toThrow(
       /Illegal action/,
     );
+  });
+});
+
+describe('revive', () => {
+  /** Play a real game all the way to its end. */
+  function playedOut() {
+    let session = newSession(SEED);
+    while (!session.state.over) {
+      const state = session.state;
+      let move = null;
+      for (let slot = 0; slot < state.hand.length && !move; slot++) {
+        const held = state.hand[slot];
+        if (!held) continue;
+        const anchor = legalAnchors(state.board, getPiece(held.pieceId))[0];
+        if (anchor) move = { slot, row: anchor[0], col: anchor[1] };
+      }
+      if (!move) break;
+      const applied = applyAction(session, move);
+      if (!applied.ok) throw new Error(applied.reason);
+      session = applied.session;
+    }
+    if (!session.state.over) throw new Error('game did not end');
+    return session;
+  }
+
+  it('is refused while the game is still going', () => {
+    expect(applyAction(newSession(SEED), { t: 'revive' })).toEqual({
+      ok: false,
+      reason: 'not-over',
+    });
+  });
+
+  it('clears the bottom rows and starts the game again', () => {
+    const dead = playedOut();
+    const filledBefore = dead.state.board.filter((cell) => cell !== 0).length;
+
+    const revived = applyAction(dead, { t: 'revive' });
+    if (!revived.ok) throw new Error(revived.reason);
+
+    expect(revived.session.state.over).toBe(false);
+    expect(revived.session.state.board.slice(-REVIVE_ROWS * 8).every((c) => c === 0)).toBe(true);
+    expect(revived.session.state.board.filter((c) => c !== 0).length).toBeLessThan(filledBefore);
+    // The score survives — a revive continues the game, it does not restart it.
+    expect(revived.session.state.score).toBe(dead.state.score);
+    expect(revived.session.revivesUsed).toBe(1);
+  });
+
+  it('costs no gems, unlike the powers', () => {
+    expect(gemCost([{ t: 'revive' }])).toBe(0);
+    expect(gemCost([{ t: 'revive' }, { t: 'undo' }])).toBe(POWER_COSTS.undo);
+  });
+
+  it('leaves nothing to undo back into the game that ended', () => {
+    const revived = applyAction(playedOut(), { t: 'revive' });
+    if (!revived.ok) throw new Error(revived.reason);
+    expect(canUndo(revived.session)).toBe(false);
+  });
+
+  it('runs out after three', () => {
+    let session = playedOut();
+    for (let i = 0; i < MAX_REVIVES; i++) {
+      const revived = applyAction(session, { t: 'revive' });
+      if (!revived.ok) throw new Error(`revive ${i + 1}: ${revived.reason}`);
+      // Play it back into the ground for the next revive.
+      session = { ...revived.session, state: { ...revived.session.state, over: true } };
+    }
+    expect(canRevive(session)).toBe(false);
+    expect(applyAction(session, { t: 'revive' })).toEqual({
+      ok: false,
+      reason: 'no-revives-left',
+    });
+  });
+
+  it('is part of the transcript, so the server can replay it', () => {
+    const dead = playedOut();
+    const revived = applyAction(dead, { t: 'revive' });
+    if (!revived.ok) throw new Error(revived.reason);
+    // Deterministic: the same actions reach the same board on the server.
+    expect(applyAction(dead, { t: 'revive' })).toEqual(revived);
   });
 });

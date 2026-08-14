@@ -41,7 +41,7 @@ interface ProgressContextValue {
   claimClassic: (seed: number, moves: GameAction[]) => Promise<ClaimResult | null>;
   /** Pay for a power. Resolves false when the gems were not there. */
   spendGems: (power: PowerName) => Promise<boolean>;
-  spinWheel: () => Promise<WheelResult>;
+  spinWheel: (watchedAd?: boolean) => Promise<WheelResult>;
 }
 
 const ProgressContext = createContext<ProgressContextValue | null>(null);
@@ -164,8 +164,8 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const spinWheel = useCallback(async () => {
-    const result = await spinWheelRequest();
+  const spinWheel = useCallback(async (watchedAd = false) => {
+    const result = await spinWheelRequest(watchedAd);
     setProfile(result.profile);
     return result;
   }, []);

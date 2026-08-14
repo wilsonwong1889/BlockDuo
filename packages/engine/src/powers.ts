@@ -1,3 +1,4 @@
+import { cloneBoard, SIZE } from './board.js';
 import { dealHand, HAND_SIZE } from './deal.js';
 import { applyMove, isGameOver, newGame } from './game.js';
 import { rotatedPieceId } from './pieces.js';
@@ -28,26 +29,56 @@ export type PowerName = keyof typeof POWER_COSTS;
 /** Undos per game. The others are limited only by what you can pay. */
 export const MAX_UNDOS = 3;
 
+/**
+ * Rows a revive clears, from the bottom up.
+ *
+ * A revive has to actually save the game. Dealing a fresh hand alone would not:
+ * a game ends because nothing in the hand fits, and on a nearly full board the
+ * next hand very often does not fit either. Clearing space is the only version
+ * that always works, and the bottom rows are the ones a player has usually
+ * given up on.
+ */
+export const REVIVE_ROWS = 2;
+
+/**
+ * Revives per game.
+ *
+ * Uncapped, a player with patience could take one score to any number they
+ * liked, and the leaderboards would stop meaning anything. Three is a cap, not
+ * a law of the game — it is one constant.
+ */
+export const MAX_REVIVES = 3;
+
 export type GameAction =
   /** No tag is a placement, so every transcript written before powers is one. */
   | ({ t?: 'place' } & Move)
   | { t: 'undo' }
   | { t: 'reroll' }
-  | { t: 'rotate'; slot: number };
+  | { t: 'rotate'; slot: number }
+  /** Paid for with an advert rather than gems, so it costs no gems. */
+  | { t: 'revive' };
 
-export const actionKind = (action: GameAction): 'place' | PowerName =>
+export const actionKind = (action: GameAction): 'place' | PowerName | 'revive' =>
   't' in action && action.t ? action.t : 'place';
 
 /** What a run of actions costs in gems. */
 export function gemCost(actions: readonly GameAction[]): number {
   return actions.reduce((total, action) => {
     const kind = actionKind(action);
-    return kind === 'place' ? total : total + POWER_COSTS[kind];
+    // A revive is bought with an advert, so it adds nothing to the gem bill.
+    if (kind === 'place' || kind === 'revive') return total;
+    return total + POWER_COSTS[kind];
   }, 0);
 }
 
 /** What one spin of the wheel costs. Gems have no other source. */
 export const WHEEL_COST_COINS = 10_000;
+
+/** Spins an advert can buy in a day, on top of the free one. */
+export const MAX_AD_SPINS_PER_DAY = 3;
+
+/** How a spin was paid for. */
+export type SpinSource = 'free' | 'ad' | 'coins';
 
 /**
  * The wheel, as whole percentage points. Ordered as it is drawn, smallest
@@ -96,15 +127,24 @@ export interface Session {
   /** Oldest first, one per recent placement, at most MAX_UNDOS of them. */
   checkpoints: GameState[];
   undosUsed: number;
+  revivesUsed: number;
 }
 
 export function newSession(seed?: number): Session {
-  return { state: newGame(seed), checkpoints: [], undosUsed: 0 };
+  return { state: newGame(seed), checkpoints: [], undosUsed: 0, revivesUsed: 0 };
 }
 
 export function sessionFrom(state: GameState, undosUsed = 0): Session {
-  return { state, checkpoints: [], undosUsed };
+  return { state, checkpoints: [], undosUsed, revivesUsed: 0 };
 }
+
+/** A revive is only offered on a game that has actually ended. */
+export function canRevive(session: Session): boolean {
+  return session.state.over && session.revivesUsed < MAX_REVIVES;
+}
+
+export const revivesLeft = (session: Session) =>
+  Math.max(0, MAX_REVIVES - session.revivesUsed);
 
 /** Undo needs a placement to reverse, an unfinished game, and a spare use. */
 export function canUndo(session: Session): boolean {
@@ -132,6 +172,25 @@ function rotated(state: GameState, slot: number): GameState | null {
   const hand = [...state.hand];
   hand[slot] = { ...held, pieceId: rotatedPieceId(held.pieceId) };
   const next: GameState = { ...state, hand };
+  next.over = isGameOver(next);
+  return next;
+}
+
+/** Wipe the bottom rows and deal into the space, so play can carry on. */
+function revived(state: GameState): GameState {
+  const board = cloneBoard(state.board);
+  board.fill(0, (SIZE - REVIVE_ROWS) * SIZE, SIZE * SIZE);
+
+  const dealt = dealHand(state.rng, board);
+  const next: GameState = {
+    ...state,
+    board,
+    hand: dealt.hand.slice(),
+    rng: dealt.rng,
+    // A revive breaks the chain: the run of clears did not continue through it.
+    streak: 0,
+    over: false,
+  };
   next.over = isGameOver(next);
   return next;
 }
@@ -167,7 +226,12 @@ export function applyAction(session: Session, action: GameAction): ActionResult 
       const restored = checkpoints.pop()!;
       return {
         ok: true,
-        session: { state: restored, checkpoints, undosUsed: session.undosUsed + 1 },
+        session: {
+          state: restored,
+          checkpoints,
+          undosUsed: session.undosUsed + 1,
+          revivesUsed: session.revivesUsed,
+        },
         events: [],
       };
     }
@@ -178,6 +242,25 @@ export function applyAction(session: Session, action: GameAction): ActionResult 
         session: { ...session, state: rerolled(state) },
         events: [],
       };
+
+    case 'revive': {
+      if (!state.over) return { ok: false, reason: 'not-over' };
+      if (session.revivesUsed >= MAX_REVIVES) return { ok: false, reason: 'no-revives-left' };
+      const next = revived(state);
+      // Clearing two rows on a jammed board can still leave nothing playable.
+      if (next.over) return { ok: false, reason: 'still-over' };
+      return {
+        ok: true,
+        // The old board is gone, so there is nothing left to undo back to.
+        session: {
+          state: next,
+          checkpoints: [],
+          undosUsed: session.undosUsed,
+          revivesUsed: session.revivesUsed + 1,
+        },
+        events: [],
+      };
+    }
 
     case 'rotate': {
       const { slot } = action as { slot: number };

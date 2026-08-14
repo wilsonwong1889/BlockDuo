@@ -158,6 +158,12 @@ export function ClassicScreen({ fresh = false, onHome }: Props) {
           rewardStatus={game.rewardStatus}
           onPrimary={game.restart}
           onHome={onHome}
+          onRevive={async () => {
+            const revived = await game.revive();
+            if (revived) setShowGameOver(false);
+            return revived;
+          }}
+          revivesLeft={game.canRevive ? game.revivesLeft : 0}
         />
       )}
 

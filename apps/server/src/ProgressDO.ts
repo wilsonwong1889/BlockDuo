@@ -8,6 +8,7 @@ import {
   wheelSegment,
   WHEEL_COST_COINS,
   WHEEL_TOTAL_WEIGHT,
+  MAX_AD_SPINS_PER_DAY,
   utcDayKey,
   weekWindow,
   type ClaimResult,
@@ -54,6 +55,9 @@ interface StoredProfile {
   gems?: number;
   /** The UTC day whose free spin has been taken. */
   freeSpinDay?: string;
+  /** The UTC day the advert spins below were counted against. */
+  adSpinDay?: string;
+  adSpinsUsed?: number;
   gamesPlayed: number;
   friendIds: string[];
   createdAt: number;
@@ -425,7 +429,10 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
    * The roll happens here because the prize is the whole point of the spin —
    * a client that picked its own segment would simply always pick fifty.
    */
-  async spinWheel(credentials: ProgressCredentials): Promise<ProgressResult<WheelResult>> {
+  async spinWheel(
+    credentials: ProgressCredentials,
+    watchedAd = false,
+  ): Promise<ProgressResult<WheelResult>> {
     return this.mutate(async () => {
       const profile = await this.authenticateRecord(credentials);
       if (!profile) return fail<WheelResult>(401, 'Your player session is no longer valid');
@@ -435,18 +442,34 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       // is what makes it survive a restart and refuse a second one.
       const today = utcDayKey();
       const free = profile.freeSpinDay !== today;
-      if (!free && profile.coins < WHEEL_COST_COINS) {
+      // An advert is only worth offering once the free spin is gone, and only
+      // while the day's allowance lasts.
+      const byAd = !free && watchedAd && adSpinsLeftFor(profile) > 0;
+
+      if (!free && !byAd && profile.coins < WHEEL_COST_COINS) {
         return fail<WheelResult>(400, 'Not enough coins for a spin');
       }
 
       const segment = wheelSegment(randomRoll(WHEEL_TOTAL_WEIGHT));
-      if (free) profile.freeSpinDay = today;
-      else profile.coins -= WHEEL_COST_COINS;
+      if (free) {
+        profile.freeSpinDay = today;
+      } else if (byAd) {
+        // Reset with the day, so yesterday's count never limits today.
+        profile.adSpinsUsed = (profile.adSpinDay === today ? profile.adSpinsUsed ?? 0 : 0) + 1;
+        profile.adSpinDay = today;
+      } else {
+        profile.coins -= WHEEL_COST_COINS;
+      }
       profile.gems = (profile.gems ?? 0) + segment.gems;
       profile.updatedAt = Date.now();
       await this.ctx.storage.put(profileKey(profile.clientId), profile);
 
-      return ok({ gems: segment.gems, free, profile: await this.view(profile) });
+      return ok({
+        gems: segment.gems,
+        free,
+        source: free ? 'free' : byAd ? 'ad' : 'coins',
+        profile: await this.view(profile),
+      });
     });
   }
 
@@ -712,6 +735,7 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       coins: profile.coins,
       gems: profile.gems ?? 0,
       freeSpinAvailable: profile.freeSpinDay !== utcDayKey(),
+      adSpinsLeft: adSpinsLeftFor(profile),
       gamesPlayed: profile.gamesPlayed,
       friends: friends
         .filter((friend): friend is StoredProfile => !!friend)
@@ -789,6 +813,12 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       await this.ctx.storage.put(ALL_TIME_BACKFILL_KEY, Date.now());
     });
   }
+}
+
+/** Advert spins left today, counting a stale day as a fresh allowance. */
+function adSpinsLeftFor(profile: StoredProfile): number {
+  const used = profile.adSpinDay === utcDayKey() ? profile.adSpinsUsed ?? 0 : 0;
+  return Math.max(0, MAX_AD_SPINS_PER_DAY - used);
 }
 
 /** A uniform whole number in [0, bound), from the platform's CSPRNG. */

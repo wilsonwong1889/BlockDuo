@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   applyAction,
+  canRevive as sessionCanRevive,
   canUndo as sessionCanUndo,
   coinReward,
   newSession,
   POWER_COSTS,
   sessionFrom,
+  revivesLeft as sessionRevivesLeft,
   undosLeft as sessionUndosLeft,
   type CoinReward,
   type GameAction,
@@ -14,6 +16,7 @@ import {
   type PowerName,
   type Session,
 } from '@blokduo/engine';
+import { showRewardedAd } from '../ads';
 import * as sfx from '../audio/sfx';
 import { useProgress } from '../progress/ProgressContext';
 import {
@@ -44,6 +47,10 @@ export interface ClassicGame {
   usePower: (power: PowerName, slot?: number) => Promise<boolean>;
   canUndo: boolean;
   undosLeft: number;
+  /** Watch an advert to carry on from a finished game. */
+  revive: () => Promise<boolean>;
+  canRevive: boolean;
+  revivesLeft: number;
   powerCosts: typeof POWER_COSTS;
 }
 
@@ -236,6 +243,41 @@ export function useClassicGame(startFresh = false): ClassicGame {
     [resetFx, spendGems],
   );
 
+  /**
+   * Carry on from a finished game, paid for with an advert.
+   *
+   * The claim is only started once the game-over card has been up for a moment,
+   * so a revive taken quickly gets in before the score is ever submitted. If it
+   * has already gone, the claim key is cleared so the longer game claims as its
+   * own transcript rather than being taken for a duplicate of the shorter one.
+   */
+  const revive = useCallback(async (): Promise<boolean> => {
+    if (!sessionCanRevive(sessionRef.current)) return false;
+
+    const advert = await showRewardedAd('revive');
+    if (!advert.watched) return false;
+
+    const applied = applyAction(sessionRef.current, { t: 'revive' });
+    if (!applied.ok) {
+      sfx.playReject();
+      return false;
+    }
+
+    movesRef.current = [...movesRef.current, { t: 'revive' }];
+    persistedRef.current = {
+      state: applied.session.state,
+      moves: movesRef.current,
+      best: bestRef.current,
+    };
+    sessionRef.current = applied.session;
+    claimKeyRef.current = '';
+    setRewardStatus(null);
+    setSession(applied.session);
+    saveTaskRef.current?.schedule();
+    resetFx();
+    return true;
+  }, [resetFx]);
+
   const reject = useCallback(() => sfx.playReject(), []);
 
   return {
@@ -252,6 +294,9 @@ export function useClassicGame(startFresh = false): ClassicGame {
     usePower,
     canUndo: sessionCanUndo(session),
     undosLeft: sessionUndosLeft(session),
+    revive,
+    canRevive: sessionCanRevive(session),
+    revivesLeft: sessionRevivesLeft(session),
     powerCosts: POWER_COSTS,
   };
 }

@@ -130,8 +130,8 @@ export function claimClassic(seed: number, moves: GameAction[]): Promise<ClaimRe
   return authenticated('/api/progress/classic', { seed, moves });
 }
 
-export function spinWheel(): Promise<WheelResult> {
-  return authenticated('/api/progress/wheel');
+export function spinWheel(watchedAd = false): Promise<WheelResult> {
+  return authenticated('/api/progress/wheel', { watchedAd });
 }
 
 export function spendGems(power: PowerName): Promise<ProgressProfile> {

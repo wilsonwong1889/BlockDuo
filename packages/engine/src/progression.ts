@@ -96,6 +96,8 @@ export interface ProgressProfile {
   gems: number;
   /** Whether today's free spin is still waiting. */
   freeSpinAvailable: boolean;
+  /** Advert-bought spins still available today. */
+  adSpinsLeft: number;
   gamesPlayed: number;
   friends: FriendProfile[];
 }
@@ -104,6 +106,8 @@ export interface WheelResult {
   gems: number;
   /** True when the day's free spin paid for this one. */
   free: boolean;
+  /** What actually paid for it. */
+  source: 'free' | 'ad' | 'coins';
   profile: ProgressProfile;
 }
 

@@ -1,8 +1,13 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
+  actionKind,
   coinReward,
   isSupportedGameSeed,
-  replay,
+  POWER_COSTS,
+  replayActions,
+  wheelSegment,
+  WHEEL_COST_COINS,
+  WHEEL_TOTAL_WEIGHT,
   weekWindow,
   type ClaimResult,
   type CoinReward,
@@ -11,10 +16,13 @@ import {
   type LeaderboardEntry,
   type LeaderboardScope,
   type LeaderboardView,
+  type GameAction,
   type Move,
   type PlayerStats,
+  type PowerName,
   type ProgressProfile,
   type PublicProfile,
+  type WheelResult,
 } from '@blokduo/engine';
 
 const FRIEND_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -41,6 +49,8 @@ interface StoredProfile {
   friendCode: string;
   name: string;
   coins: number;
+  /** Absent on profiles created before gems existed, which is the same as none. */
+  gems?: number;
   gamesPlayed: number;
   friendIds: string[];
   createdAt: number;
@@ -406,11 +416,60 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     });
   }
 
+  /**
+   * Spin the wheel: coins in, gems out.
+   *
+   * The roll happens here because the prize is the whole point of the spin —
+   * a client that picked its own segment would simply always pick fifty.
+   */
+  async spinWheel(credentials: ProgressCredentials): Promise<ProgressResult<WheelResult>> {
+    return this.mutate(async () => {
+      const profile = await this.authenticateRecord(credentials);
+      if (!profile) return fail<WheelResult>(401, 'Your player session is no longer valid');
+      if (profile.coins < WHEEL_COST_COINS) {
+        return fail<WheelResult>(400, 'Not enough coins for a spin');
+      }
+
+      const segment = wheelSegment(randomRoll(WHEEL_TOTAL_WEIGHT));
+      profile.coins -= WHEEL_COST_COINS;
+      profile.gems = (profile.gems ?? 0) + segment.gems;
+      profile.updatedAt = Date.now();
+      await this.ctx.storage.put(profileKey(profile.clientId), profile);
+
+      return ok({ gems: segment.gems, profile: await this.view(profile) });
+    });
+  }
+
+  /**
+   * Pay for one power, now rather than when the game is claimed.
+   *
+   * A game can be abandoned and never claimed, so charging at the end would
+   * hand out free powers to anyone who closed the tab.
+   */
+  async spendGems(
+    credentials: ProgressCredentials,
+    power: PowerName,
+  ): Promise<ProgressResult<ProgressProfile>> {
+    return this.mutate(async () => {
+      const profile = await this.authenticateRecord(credentials);
+      if (!profile) return fail<ProgressProfile>(401, 'Your player session is no longer valid');
+
+      const cost = POWER_COSTS[power];
+      if (!cost) return fail<ProgressProfile>(400, 'Unknown power');
+      if ((profile.gems ?? 0) < cost) return fail<ProgressProfile>(400, 'Not enough gems');
+
+      profile.gems = (profile.gems ?? 0) - cost;
+      profile.updatedAt = Date.now();
+      await this.ctx.storage.put(profileKey(profile.clientId), profile);
+      return ok(await this.view(profile));
+    });
+  }
+
   /** Replay the complete transcript; no client-supplied score is ever trusted. */
   async claimClassic(
     credentials: ProgressCredentials,
     seed: number,
-    moves: Move[],
+    moves: GameAction[],
   ): Promise<ProgressResult<ClaimResult>> {
     return this.mutate(() => this.claimClassicLocked(credentials, seed, moves));
   }
@@ -418,18 +477,21 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
   private async claimClassicLocked(
     credentials: ProgressCredentials,
     seed: number,
-    moves: Move[],
+    moves: GameAction[],
   ): Promise<ProgressResult<ClaimResult>> {
     const profile = await this.authenticateRecord(credentials);
     if (!profile) return fail(401, 'Your player session is no longer valid');
     if (!validSeed(seed) || !Array.isArray(moves) || moves.length > MAX_CLASSIC_MOVES) {
       return fail(400, 'That game transcript is invalid');
     }
-    if (!moves.every(validMove)) return fail(400, 'That game transcript is invalid');
+    if (!moves.every(validAction)) return fail(400, 'That game transcript is invalid');
 
     let finalState;
     try {
-      finalState = replay(seed, moves);
+      // Powers are part of the transcript, so a game that used them is checked
+      // exactly as strictly as one that did not: the replay enforces the undo
+      // limit and refuses a rotation of an empty slot.
+      finalState = replayActions(seed, moves);
     } catch {
       return fail(400, 'That game contains an illegal move');
     }
@@ -638,6 +700,7 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       friendCode: profile.friendCode,
       name: profile.name,
       coins: profile.coins,
+      gems: profile.gems ?? 0,
       gamesPlayed: profile.gamesPlayed,
       friends: friends
         .filter((friend): friend is StoredProfile => !!friend)
@@ -717,6 +780,13 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
   }
 }
 
+/** A uniform whole number in [0, bound), from the platform's CSPRNG. */
+function randomRoll(bound: number): number {
+  const buffer = new Uint32Array(1);
+  crypto.getRandomValues(buffer);
+  return buffer[0] % bound;
+}
+
 function profileKey(clientId: string) {
   return `profile:${clientId}`;
 }
@@ -745,6 +815,25 @@ function normalizeFriendCode(value: unknown): string {
 
 function validSeed(seed: number): boolean {
   return isSupportedGameSeed(seed);
+}
+
+/**
+ * A transcript entry the replay could plausibly be handed.
+ *
+ * The replay decides whether it was actually legal; this only keeps obvious
+ * rubbish out of it, and refuses tags that are not powers so an unknown one
+ * cannot be silently treated as a placement.
+ */
+function validAction(action: GameAction): boolean {
+  if (!action || typeof action !== 'object') return false;
+  const kind = actionKind(action);
+  if (kind === 'undo' || kind === 'reroll') return true;
+  if (kind === 'rotate') {
+    const { slot } = action as { slot: number };
+    return Number.isInteger(slot) && slot >= 0 && slot <= 2;
+  }
+  if (kind !== 'place') return false;
+  return validMove(action as Move);
 }
 
 function validMove(move: Move): boolean {

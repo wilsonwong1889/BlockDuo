@@ -92,8 +92,15 @@ export interface ProgressProfile {
   friendCode: string;
   name: string;
   coins: number;
+  /** Spent on powers, won only from the wheel. */
+  gems: number;
   gamesPlayed: number;
   friends: FriendProfile[];
+}
+
+export interface WheelResult {
+  gems: number;
+  profile: ProgressProfile;
 }
 
 export type LeaderboardScope = 'global' | 'friends';

@@ -4,8 +4,13 @@ import {
   applyMove,
   coinReward,
   decodeState,
+  applyAction,
   gameSeed,
   getPiece,
+  newSession,
+  POWER_COSTS,
+  WHEEL_COST_COINS,
+  WHEEL_SEGMENTS,
   legalAnchors,
   newGame,
   type ClaimResult,
@@ -13,8 +18,10 @@ import {
   type GameState,
   type LeaderboardView,
   type Move,
+  type GameAction,
   type ProgressProfile,
   type PublicProfile,
+  type WheelResult,
   type RoomSnapshot,
   type ServerMessage,
 } from '@blokduo/engine';
@@ -216,6 +223,50 @@ function completedClassic(seed = 0x5eedc0de): { state: GameState; moves: Move[] 
 
   if (!state.over) throw new Error('Deterministic game did not finish within 2,000 moves');
   return { state, moves };
+}
+
+/**
+ * A finished game whose transcript contains powers, so the claim path is
+ * exercised on exactly what a player using them would send.
+ */
+function completedWithPowers(seed: number): { state: GameState; actions: GameAction[] } {
+  let session = newSession(seed);
+  const actions: GameAction[] = [];
+
+  const take = (action: GameAction) => {
+    const result = applyAction(session, action);
+    if (!result.ok) throw new Error(`rejected ${JSON.stringify(action)}: ${result.reason}`);
+    session = result.session;
+    actions.push(action);
+  };
+
+  const nextMove = (): Move | null => {
+    const state = session.state;
+    for (let slot = 0; slot < state.hand.length; slot++) {
+      const held = state.hand[slot];
+      if (!held) continue;
+      const anchor = legalAnchors(state.board, getPiece(held.pieceId))[0];
+      if (anchor) return { slot, row: anchor[0], col: anchor[1] };
+    }
+    return null;
+  };
+
+  let spent = false;
+  while (!session.state.over && actions.length < 2_000) {
+    const move = nextMove();
+    if (!move) break;
+    take(move);
+
+    // Once, early on: take the placement back, then throw the hand away.
+    if (!spent && session.state.moveCount >= 2) {
+      spent = true;
+      take({ t: 'undo' });
+      take({ t: 'reroll' });
+    }
+  }
+
+  if (!session.state.over) throw new Error('powered game did not finish');
+  return { state: session.state, actions };
 }
 
 describe('progress player identity', () => {
@@ -455,6 +506,91 @@ describe('progress friendships', () => {
     );
     const body = (await response.json()) as PublicProfile;
     expect(body.stats.bestScore).toBe(game.state.score);
+  });
+
+  it('claims a game that used powers, and rejects a forged one', async () => {
+    const player = await createPlayer(`Powered ${crypto.randomUUID().slice(0, 8)}`);
+    const { state, actions } = completedWithPowers(gameSeed(0x0b0ec12));
+
+    // The transcript contains an undo and a reroll, and still verifies.
+    expect(actions.some((a) => 't' in a && a.t === 'undo')).toBe(true);
+    expect(actions.some((a) => 't' in a && a.t === 'reroll')).toBe(true);
+
+    const claim = await post<ClaimResult>('/api/progress/classic', {
+      ...player.identity,
+      seed: state.seed,
+      moves: actions,
+    });
+    expect(claim.response.status).toBe(200);
+    expect(claim.body.reward).toEqual(coinReward(state.score, state.moveCount));
+
+    // A fourth undo is beyond the limit, so the replay refuses the whole game.
+    const forged = await post<{ error: string }>('/api/progress/classic', {
+      ...player.identity,
+      seed: state.seed,
+      moves: [...actions, { t: 'undo' }, { t: 'undo' }, { t: 'undo' }, { t: 'undo' }],
+    });
+    expect(forged.response.status).toBe(400);
+  });
+
+  it('turns coins into gems on the wheel, and refuses a spin nobody can afford', async () => {
+    const player = await createPlayer(`Spinner ${crypto.randomUUID().slice(0, 8)}`);
+
+    const broke = await post<{ error: string }>('/api/progress/wheel', { ...player.identity });
+    expect(broke.response.status).toBe(400);
+
+    // Granted directly: earning 10,000 coins would mean playing a dozen games.
+    const stub = env.PROGRESS.get(env.PROGRESS.idFromName('global'));
+    await runInDurableObject(stub, async (_i, state) => {
+      const key = `profile:${player.identity.clientId}`;
+      const stored = await state.storage.get<Record<string, unknown>>(key);
+      await state.storage.put(key, { ...stored, coins: WHEEL_COST_COINS + 25 });
+    });
+
+    const spin = await post<WheelResult>('/api/progress/wheel', { ...player.identity });
+    expect(spin.response.status).toBe(200);
+    expect(WHEEL_SEGMENTS.map((s) => s.gems)).toContain(spin.body.gems);
+    expect(spin.body.profile.coins).toBe(25);
+    expect(spin.body.profile.gems).toBe(spin.body.gems);
+  });
+
+  it('charges the listed price for a power and refuses what cannot be paid', async () => {
+    const player = await createPlayer(`Spender ${crypto.randomUUID().slice(0, 8)}`);
+    const stub = env.PROGRESS.get(env.PROGRESS.idFromName('global'));
+    await runInDurableObject(stub, async (_i, state) => {
+      const key = `profile:${player.identity.clientId}`;
+      const stored = await state.storage.get<Record<string, unknown>>(key);
+      await state.storage.put(key, { ...stored, gems: 3 });
+    });
+
+    const undo = await post<ProgressProfile>('/api/progress/gems/spend', {
+      ...player.identity,
+      power: 'undo',
+    });
+    expect(undo.body.gems).toBe(3 - POWER_COSTS.undo);
+
+    const rotate = await post<ProgressProfile>('/api/progress/gems/spend', {
+      ...player.identity,
+      power: 'rotate',
+    });
+    expect(rotate.body.gems).toBe(0);
+
+    // Nothing left, so the next one is refused rather than going negative.
+    const broke = await post<{ error: string }>('/api/progress/gems/spend', {
+      ...player.identity,
+      power: 'reroll',
+    });
+    expect(broke.response.status).toBe(400);
+    expect((await getProfile(player)).gems).toBe(0);
+  });
+
+  it('refuses a power that does not exist', async () => {
+    const player = await createPlayer(`Inventive ${crypto.randomUUID().slice(0, 8)}`);
+    const made_up = await post<{ error: string }>('/api/progress/gems/spend', {
+      ...player.identity,
+      power: 'teleport',
+    });
+    expect(made_up.response.status).toBe(400);
   });
 
   it('refuses a profile for a code that does not exist', async () => {

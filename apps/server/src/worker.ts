@@ -103,6 +103,14 @@ export default {
           await progress.leaderboard(credentials, body.mode, body.scope),
         );
       }
+      if (url.pathname === '/api/progress/wheel') {
+        return resultJson(await progress.spinWheel(credentials));
+      }
+
+      if (url.pathname === '/api/progress/gems/spend') {
+        return resultJson(await progress.spendGems(credentials, body.power as never));
+      }
+
       if (url.pathname === '/api/progress/classic') {
         return resultJson(
           await progress.claimClassic(

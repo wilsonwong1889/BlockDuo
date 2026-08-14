@@ -126,8 +126,12 @@ export async function fetchPublicProfile(friendCode: string): Promise<PublicProf
   return payload as PublicProfile;
 }
 
-export function claimClassic(seed: number, moves: GameAction[]): Promise<ClaimResult> {
-  return authenticated('/api/progress/classic', { seed, moves });
+export function claimClassic(
+  seed: number,
+  moves: GameAction[],
+  ranked = false,
+): Promise<ClaimResult> {
+  return authenticated('/api/progress/classic', { seed, moves, ranked });
 }
 
 export function spinWheel(watchedAd = false): Promise<WheelResult> {

@@ -119,6 +119,7 @@ export default {
             credentials,
             Number(body.seed),
             Array.isArray(body.moves) ? body.moves : [],
+            body.ranked === true,
           ),
         );
       }

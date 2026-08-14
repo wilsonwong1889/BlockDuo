@@ -10,15 +10,18 @@ import { isModalOpen } from '../components/modalStack';
 import { Tray } from '../components/Tray';
 import { useClassicGame } from '../game/useClassicGame';
 import { useGeometry, usePlacement } from '../game/usePlacement';
+import type { ClassicMode } from '@blokduo/engine';
 
 interface Props {
   fresh?: boolean;
+  mode?: ClassicMode;
   onHome: () => void;
 }
 
-export function ClassicScreen({ fresh = false, onHome }: Props) {
+export function ClassicScreen({ fresh = false, mode = 'casual', onHome }: Props) {
   const { geom, boardRef, measureNow } = useGeometry();
-  const game = useClassicGame(fresh);
+  const game = useClassicGame(fresh, mode);
+  const ranked = mode === 'ranked';
   const [confirmRestart, setConfirmRestart] = useState(false);
   const { profile } = useProgress();
   const [showGameOver, setShowGameOver] = useState(false);
@@ -88,7 +91,7 @@ export function ClassicScreen({ fresh = false, onHome }: Props) {
         <button className="icon-btn" onClick={onHome} aria-label="Back to menu">
           ‹
         </button>
-        <span className="topbar-title">Classic</span>
+        <span className="topbar-title">{ranked ? 'Ranked' : 'Classic'}</span>
         <button
           className="icon-btn"
           onClick={() => (game.state.moveCount > 0 && !game.state.over ? setConfirmRestart(true) : game.restart())}
@@ -100,6 +103,9 @@ export function ClassicScreen({ fresh = false, onHome }: Props) {
 
       <Hud score={game.state.score} best={game.best} streak={game.state.streak} />
 
+      {/* Ranked buys nothing, so the bar is not drawn at all rather than drawn
+          and disabled — there is nothing here to come back for. */}
+      {!ranked && (
       <PowerBar
         gems={profile?.gems ?? 0}
         costs={game.powerCosts}
@@ -109,6 +115,10 @@ export function ClassicScreen({ fresh = false, onHome }: Props) {
         disabled={game.state.over}
         onUse={game.usePower}
       />
+      )}
+      {ranked && (
+        <p className="ranked-note">No powers, no gems — this one counts.</p>
+      )}
 
       <div className="board-wrap">
         <Board

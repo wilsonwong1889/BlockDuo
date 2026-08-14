@@ -14,13 +14,24 @@ import {
 interface Props {
   onClassic: () => void;
   onNewClassic: () => void;
+  onRanked: () => void;
+  onNewRanked: () => void;
   onProfile: () => void;
   onWheel: () => void;
   onDuo: () => void;
   onSocial: () => void;
 }
 
-export function HomeScreen({ onClassic, onNewClassic, onDuo, onSocial, onProfile, onWheel }: Props) {
+export function HomeScreen({
+  onClassic,
+  onNewClassic,
+  onRanked,
+  onNewRanked,
+  onDuo,
+  onSocial,
+  onProfile,
+  onWheel,
+}: Props) {
   const [settings, setSettings] = useState(loadAppSettings);
   const [panel, setPanel] = useState<'settings' | 'new-game' | null>(null);
   const { profile } = useProgress();
@@ -32,9 +43,11 @@ export function HomeScreen({ onClassic, onNewClassic, onDuo, onSocial, onProfile
   const [initial] = useState(() => ({
     best: loadBest(),
     game: loadClassicGame(),
+    ranked: loadClassicGame('ranked'),
   }));
-  const { best, game: savedGame } = initial;
+  const { best, game: savedGame, ranked: savedRanked } = initial;
   const hasSavedProgress = !!savedGame && savedGame.state.moveCount > 0;
+  const hasRankedProgress = !!savedRanked && savedRanked.state.moveCount > 0;
 
   const changeSettings = (next: AppSettings) => {
     setSettings(next);
@@ -54,6 +67,12 @@ export function HomeScreen({ onClassic, onNewClassic, onDuo, onSocial, onProfile
   const startNewClassic = () => {
     if (hasSavedProgress) setPanel('new-game');
     else onNewClassic();
+  };
+
+  const startRanked = () => {
+    unlockAudio();
+    if (hasRankedProgress) onRanked();
+    else onNewRanked();
   };
 
   return (
@@ -96,6 +115,14 @@ export function HomeScreen({ onClassic, onNewClassic, onDuo, onSocial, onProfile
             Play Classic
           </button>
         )}
+        <button className="btn big ranked-btn" onClick={startRanked}>
+          {hasRankedProgress ? 'Continue Ranked' : 'Ranked Classic'}
+          <span className="btn-sub">
+            {hasRankedProgress
+              ? `Score ${savedRanked.state.score.toLocaleString()} · ${savedRanked.state.moveCount} pieces`
+              : 'No powers · this is the leaderboard'}
+          </span>
+        </button>
         <button className="btn big" onClick={startDuo}>
           Play duo
           <span className="btn-sub">Two players, one board, live</span>

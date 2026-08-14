@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   applyAction,
+  DEFAULT_CLASSIC_MODE,
   canUndo as sessionCanUndo,
   coinReward,
   newSession,
   POWER_COSTS,
   sessionFrom,
   undosLeft as sessionUndosLeft,
+  type ClassicMode,
   type CoinReward,
   type GameAction,
   type GameState,
@@ -47,8 +49,12 @@ export interface ClassicGame {
   powerCosts: typeof POWER_COSTS;
 }
 
-export function useClassicGame(startFresh = false): ClassicGame {
-  const [initial] = useState(() => (startFresh ? null : loadClassicGame()));
+export function useClassicGame(
+  startFresh = false,
+  mode: ClassicMode = DEFAULT_CLASSIC_MODE,
+): ClassicGame {
+  const ranked = mode === 'ranked';
+  const [initial] = useState(() => (startFresh ? null : loadClassicGame(mode)));
   // The session carries the few states behind the current one that an undo can
   // return to; a resumed game starts with none, so undos are per sitting.
   const [session, setSession] = useState<Session>(() =>
@@ -75,7 +81,7 @@ export function useClassicGame(startFresh = false): ClassicGame {
     saveTaskRef.current = createDeferredTask(
       () => {
         const pending = persistedRef.current;
-        saveGame(pending.state, pending.moves);
+        saveGame(pending.state, pending.moves, mode);
         saveBest(pending.best);
       },
       2_000,
@@ -96,8 +102,8 @@ export function useClassicGame(startFresh = false): ClassicGame {
   }, []);
 
   useEffect(() => {
-    if (startFresh) saveGame(null);
-  }, [startFresh]);
+    if (startFresh) saveGame(null, [], mode);
+  }, [startFresh, mode]);
 
   useEffect(() => {
     if (!state.over) return;
@@ -109,7 +115,9 @@ export function useClassicGame(startFresh = false): ClassicGame {
     const persistCompletion = () => {
       if (persisted) return;
       persisted = true;
-      if (rewardEligibleRef.current) queuePendingClassic({ seed: state.seed, moves: transcript });
+      if (rewardEligibleRef.current) {
+        queuePendingClassic({ seed: state.seed, moves: transcript, ranked });
+      }
     };
 
     // Both outcomes are already known here, so the card opens in its final
@@ -124,7 +132,7 @@ export function useClassicGame(startFresh = false): ClassicGame {
       claimKeyRef.current = key;
       persistCompletion();
       if (!rewardEligibleRef.current) return;
-      void claimClassic(state.seed, transcript).then((result) => {
+      void claimClassic(state.seed, transcript, ranked).then((result) => {
         if (claimKeyRef.current !== key) return;
         setRewardStatus(result ? 'awarded' : 'queued');
       });
@@ -143,7 +151,7 @@ export function useClassicGame(startFresh = false): ClassicGame {
       document.removeEventListener('visibilitychange', persistWhenHidden);
       if (!settled) persistCompletion();
     };
-  }, [claimClassic, state.over, state.seed]);
+  }, [claimClassic, ranked, state.over, state.seed]);
 
   // The authoritative state is kept in a ref alongside React state.
   //
@@ -181,7 +189,7 @@ export function useClassicGame(startFresh = false): ClassicGame {
   const restart = useCallback(() => {
     resetFx();
     saveTaskRef.current?.cancel();
-    saveGame(null);
+    saveGame(null, [], mode);
     const fresh = newSession();
     movesRef.current = [];
     persistedRef.current = { state: fresh.state, moves: [], best: bestRef.current };
@@ -202,6 +210,9 @@ export function useClassicGame(startFresh = false): ClassicGame {
    */
   const usePower = useCallback(
     async (power: PowerName, slot?: number): Promise<boolean> => {
+      // Belt as well as braces: the bar is not drawn in ranked, and the engine
+      // would not be asked, but the one place that spends gems refuses too.
+      if (ranked) return false;
       const action: GameAction =
         power === 'rotate' ? { t: 'rotate', slot: slot ?? 0 } : { t: power };
 
@@ -233,7 +244,7 @@ export function useClassicGame(startFresh = false): ClassicGame {
       resetFx();
       return true;
     },
-    [resetFx, spendGems],
+    [ranked, resetFx, spendGems],
   );
 
 
@@ -251,7 +262,7 @@ export function useClassicGame(startFresh = false): ClassicGame {
     restart,
     reject,
     usePower,
-    canUndo: sessionCanUndo(session),
+    canUndo: !ranked && sessionCanUndo(session),
     undosLeft: sessionUndosLeft(session),
     powerCosts: POWER_COSTS,
   };

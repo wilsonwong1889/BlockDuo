@@ -22,6 +22,16 @@ describe('parseHash', () => {
     expect(parseHash('#/duo')).toEqual({ name: 'duo', code: undefined });
   });
 
+  it('reads ranked classic as its own route', () => {
+    expect(parseHash('#/ranked')).toEqual({ name: 'ranked', fresh: false });
+    expect(parseHash('#/ranked/new')).toEqual({ name: 'ranked', fresh: true });
+    expect(normalizedHash({ name: 'ranked', fresh: true })).toBe('#/ranked');
+  });
+
+  it('keeps casual and ranked apart', () => {
+    expect(parseHash('#/classic')).not.toEqual(parseHash('#/ranked'));
+  });
+
   it('reads a player profile, with and without a code', () => {
     expect(parseHash('#/player/bd-abc123')).toEqual({ name: 'player', code: 'BD-ABC123' });
     expect(parseHash('#/player')).toEqual({ name: 'player', code: undefined });

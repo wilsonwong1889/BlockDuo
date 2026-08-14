@@ -374,6 +374,7 @@ describe('progress friendships', () => {
         ...player.identity,
         seed: game.state.seed,
         moves: game.moves,
+      ranked: true,
       });
       expect(claim.response.status).toBe(200);
       expect(claim.body.awarded).toBe(true);
@@ -414,6 +415,7 @@ describe('progress friendships', () => {
       ...player.identity,
       seed: game.state.seed,
       moves: game.moves,
+      ranked: true,
     });
 
     // Exactly the state a ledger with history was left in: weekly records
@@ -452,6 +454,7 @@ describe('progress friendships', () => {
       ...player.identity,
       seed: game.state.seed,
       moves: game.moves,
+      ranked: true,
     });
 
     // No credentials: this is the whole point of a public profile.
@@ -488,6 +491,7 @@ describe('progress friendships', () => {
       ...player.identity,
       seed: game.state.seed,
       moves: game.moves,
+      ranked: true,
     });
 
     // What an older build left behind: a score on the board, a profile with no
@@ -598,6 +602,54 @@ describe('progress friendships', () => {
       await state.storage.put(key, { ...stored, adSpinDay: '2020-01-01', freeSpinDay: '2020-01-01' });
     });
     expect((await getProfile(player)).adSpinsLeft).toBe(MAX_AD_SPINS_PER_DAY);
+  });
+
+  it('keeps a casual Classic game off the boards but still pays it', async () => {
+    const marker = crypto.randomUUID().slice(0, 8);
+    const player = await createPlayer(`Casual ${marker}`);
+    const game = completedClassic(gameSeed(0x0ca50a1));
+
+    const claim = await post<ClaimResult>('/api/progress/classic', {
+      ...player.identity,
+      seed: game.state.seed,
+      moves: game.moves,
+      // No `ranked`, so this is the everyday game.
+    });
+    expect(claim.response.status).toBe(200);
+    expect(claim.body.reward.totalCoins).toBeGreaterThan(0);
+    expect((await getProfile(player)).coins).toBe(claim.body.reward.totalCoins);
+
+    const board = await post<LeaderboardView>('/api/progress/leaderboard', {
+      ...player.identity,
+      mode: 'classic',
+      scope: 'global',
+    });
+    for (const half of [board.body.weekly, board.body.allTime]) {
+      expect(half.entries.filter((entry) => entry.name.includes(marker))).toHaveLength(0);
+    }
+  });
+
+  it('refuses a ranked claim for a game that used powers', async () => {
+    const player = await createPlayer(`Cheat ${crypto.randomUUID().slice(0, 8)}`);
+    const { state, actions } = completedWithPowers(gameSeed(0x0c4ea7));
+
+    // The same game claims fine as casual and is refused as ranked, which is
+    // the whole difference between the two modes.
+    const casual = await post<ClaimResult>('/api/progress/classic', {
+      ...player.identity,
+      seed: state.seed,
+      moves: actions,
+    });
+    expect(casual.response.status).toBe(200);
+
+    const ranked = await post<{ error: string }>('/api/progress/classic', {
+      ...player.identity,
+      seed: state.seed,
+      moves: actions,
+      ranked: true,
+    });
+    expect(ranked.response.status).toBe(400);
+    expect(ranked.body.error).toMatch(/ranked/i);
   });
 
   it('refuses a transcript containing a power that no longer exists', async () => {

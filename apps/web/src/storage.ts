@@ -2,8 +2,10 @@ import {
   DEFAULT_DUO_MODE,
   decodeState,
   encodeState,
+  DEFAULT_CLASSIC_MODE,
   isDuoMode,
   replayActions,
+  type ClassicMode,
   type DuoMode,
   type GameAction,
   type GameState,
@@ -22,6 +24,7 @@ const KEYS = {
   muted: 'blokduo.muted',
   saved: 'blokduo.saved.v1',
   savedV2: 'blokduo.saved.v2',
+  savedRanked: 'blokduo.saved.ranked.v1',
   name: 'blokduo.name',
   clientId: 'blokduo.clientId',
   progressIdentity: 'blokduo.progressIdentity.v1',
@@ -59,6 +62,8 @@ export interface PendingClassicClaim {
   seed: number;
   /** Placements and any powers used, in the order they happened. */
   moves: GameAction[];
+  /** Whether it was a ranked run, so a retry claims it as the same game. */
+  ranked?: boolean;
 }
 
 export interface SavedClassicGame {
@@ -166,24 +171,40 @@ export const saveProgressIdentity = (identity: ProgressIdentity) =>
 export const clearProgressIdentity = () => remove(KEYS.progressIdentity);
 
 /** Persist the in-progress classic game so a refresh or a backgrounded tab does not lose it. */
-export function saveGame(state: GameState | null, moves: GameAction[] = []) {
+/**
+ * Casual and Ranked keep separate saves.
+ *
+ * They are different games with different rules, so finishing one must not
+ * throw the other away — a ranked run left half-played is still there when the
+ * casual game it was interrupted for ends.
+ */
+const slotFor = (mode: ClassicMode) => (mode === 'ranked' ? KEYS.savedRanked : KEYS.savedV2);
+
+export function saveGame(
+  state: GameState | null,
+  moves: GameAction[] = [],
+  mode: ClassicMode = DEFAULT_CLASSIC_MODE,
+) {
+  const slot = slotFor(mode);
   if (!state || state.over) {
-    remove(KEYS.saved);
-    remove(KEYS.savedV2);
+    remove(slot);
+    if (mode === DEFAULT_CLASSIC_MODE) remove(KEYS.saved);
     return;
   }
-  write(KEYS.savedV2, { state: encodeState(state), moves });
-  // A successful v2 write makes the legacy save redundant. Removing it also
+  write(slot, { state: encodeState(state), moves });
+  // A successful write makes the legacy save redundant. Removing it also
   // prevents a stale v1 game from resurfacing after this game is cleared.
-  remove(KEYS.saved);
+  if (mode === DEFAULT_CLASSIC_MODE) remove(KEYS.saved);
 }
 
 export function loadGame(): GameState | null {
   return loadClassicGame()?.state ?? null;
 }
 
-export function loadClassicGame(): SavedClassicGame | null {
-  const modern = read<{ state: WireGameState; moves: GameAction[] } | null>(KEYS.savedV2, null);
+export function loadClassicGame(
+  mode: ClassicMode = DEFAULT_CLASSIC_MODE,
+): SavedClassicGame | null {
+  const modern = read<{ state: WireGameState; moves: GameAction[] } | null>(slotFor(mode), null);
   if (modern) {
     try {
       const state = decodeState(modern.state);
@@ -195,7 +216,8 @@ export function loadClassicGame(): SavedClassicGame | null {
     }
   }
 
-  const wire = read<WireGameState | null>(KEYS.saved, null);
+  // The legacy slot only ever held casual games.
+  const wire = mode === DEFAULT_CLASSIC_MODE ? read<WireGameState | null>(KEYS.saved, null) : null;
   if (!wire) return null;
   try {
     const state = decodeState(wire);

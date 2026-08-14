@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import {
   actionKind,
   coinReward,
+  isRankedTranscript,
   isSupportedGameSeed,
   POWER_COSTS,
   replayActions,
@@ -503,14 +504,16 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     credentials: ProgressCredentials,
     seed: number,
     moves: GameAction[],
+    ranked = false,
   ): Promise<ProgressResult<ClaimResult>> {
-    return this.mutate(() => this.claimClassicLocked(credentials, seed, moves));
+    return this.mutate(() => this.claimClassicLocked(credentials, seed, moves, ranked));
   }
 
   private async claimClassicLocked(
     credentials: ProgressCredentials,
     seed: number,
     moves: GameAction[],
+    ranked: boolean,
   ): Promise<ProgressResult<ClaimResult>> {
     const profile = await this.authenticateRecord(credentials);
     if (!profile) return fail(401, 'Your player session is no longer valid');
@@ -518,6 +521,11 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       return fail(400, 'That game transcript is invalid');
     }
     if (!moves.every(validAction)) return fail(400, 'That game transcript is invalid');
+    // Checked here rather than trusted from the client: a ranked run claiming a
+    // power it was never allowed is refused outright, not quietly unranked.
+    if (ranked && !isRankedTranscript(moves)) {
+      return fail(400, 'A ranked game cannot use powers');
+    }
 
     let finalState;
     try {
@@ -530,7 +538,7 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     }
     if (!finalState.over) return fail(400, 'Only completed games earn coins');
 
-    const fingerprint = await hashToken(JSON.stringify([seed, moves]));
+    const fingerprint = await hashToken(JSON.stringify([seed, moves, ranked]));
     const claimKey = `claim:classic:${profile.clientId}:${fingerprint}`;
     const previous = await this.ctx.storage.get<StoredClaim>(claimKey);
     if (previous) {
@@ -552,7 +560,11 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       mode: 'classic',
       achievedAt: Date.now(),
     };
-    const ranked = await this.rankedWrites(record);
+    // Casual Classic is played for coins and your own best; only Ranked is a
+    // ranking. Both still count toward the profile's lifetime totals.
+    const ledger = ranked
+      ? await this.rankedWrites(record)
+      : { writes: {} as Record<string, RankedScore>, weeklyBest: false };
 
     profile.coins = safeAdd(profile.coins, reward.totalCoins);
     const finishedAt = Date.now();
@@ -568,12 +580,12 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     );
     profile.updatedAt = finishedAt;
     const writes: Record<string, StoredProfile | StoredClaim | RankedScore> = {
-      ...ranked.writes,
+      ...ledger.writes,
       [profileKey(profile.clientId)]: profile,
-      [claimKey]: { reward, weeklyBest: ranked.weeklyBest } satisfies StoredClaim,
+      [claimKey]: { reward, weeklyBest: ledger.weeklyBest } satisfies StoredClaim,
     };
     await this.ctx.storage.put(writes);
-    const weeklyBest = ranked.weeklyBest;
+    const weeklyBest = ledger.weeklyBest;
 
     return ok({ awarded: true, reward, weeklyBest, profile: await this.view(profile) });
   }

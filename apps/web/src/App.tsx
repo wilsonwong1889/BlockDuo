@@ -26,9 +26,9 @@ export function App() {
   // time and throw away the game in progress. replaceState fires no hashchange
   // and adds no history entry, so Back still reaches Home in one press.
   useEffect(() => {
-    if (route.name !== 'classic' || !route.fresh) return;
+    if ((route.name !== 'classic' && route.name !== 'ranked') || !route.fresh) return;
     window.history.replaceState(null, '', normalizedHash(route));
-    setRoute({ name: 'classic', fresh: false });
+    setRoute(route.name === 'ranked' ? { name: 'ranked', fresh: false } : { name: 'classic', fresh: false });
   }, [route]);
 
   const go = (hash: string) => {
@@ -41,6 +41,10 @@ export function App() {
       // Keyed so that clearing `fresh` above re-renders the screen in place
       // rather than remounting it and reloading the board it just replaced.
       return <ClassicScreen key="classic" fresh={route.fresh} onHome={() => go('/')} />;
+    case 'ranked':
+      return (
+        <ClassicScreen key="ranked" mode="ranked" fresh={route.fresh} onHome={() => go('/')} />
+      );
     case 'duo':
       // A code in the URL means the player followed an invite, so skip the
       // lobby and take them straight into the room.
@@ -71,6 +75,8 @@ export function App() {
         <HomeScreen
           onClassic={() => go('/classic')}
           onNewClassic={() => go('/classic/new')}
+          onRanked={() => go('/ranked')}
+          onNewRanked={() => go('/ranked/new')}
           onProfile={() => go('/player')}
           onWheel={() => go('/wheel')}
           onDuo={() => go('/duo')}

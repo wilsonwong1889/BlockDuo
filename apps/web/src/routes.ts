@@ -11,6 +11,7 @@
 export type Route =
   | { name: 'home' }
   | { name: 'classic'; fresh: boolean }
+  | { name: 'ranked'; fresh: boolean }
   | { name: 'duo'; code?: string }
   | { name: 'social' }
   | { name: 'wheel' }
@@ -21,6 +22,7 @@ export function parseHash(hash: string): Route {
   const path = hash.replace(/^#\/?/, '');
   const [head, arg] = path.split('/');
   if (head === 'classic') return { name: 'classic', fresh: arg === 'new' };
+  if (head === 'ranked') return { name: 'ranked', fresh: arg === 'new' };
   if (head === 'duo') return { name: 'duo', code: arg ? arg.toUpperCase() : undefined };
   if (head === 'player') return { name: 'player', code: arg ? arg.toUpperCase() : undefined };
   if (head === 'social') return { name: 'social' };
@@ -39,6 +41,8 @@ export function normalizedHash(route: Route): string {
   switch (route.name) {
     case 'classic':
       return '#/classic';
+    case 'ranked':
+      return '#/ranked';
     case 'duo':
       return route.code ? `#/duo/${route.code}` : '#/duo';
     case 'player':

@@ -5,7 +5,10 @@ import { legalAnchors } from '../src/board';
 import {
   applyAction,
   canUndo,
+  DEFAULT_CLASSIC_MODE,
   gemCost,
+  isClassicMode,
+  isRankedTranscript,
   MAX_UNDOS,
   newSession,
   POWER_COSTS,
@@ -240,3 +243,26 @@ describe('replayActions', () => {
   });
 });
 
+
+describe('ranked classic', () => {
+  it('accepts a transcript of nothing but placements', () => {
+    expect(isRankedTranscript([{ slot: 0, row: 0, col: 0 }, { slot: 1, row: 2, col: 2 }])).toBe(true);
+    expect(isRankedTranscript([])).toBe(true);
+  });
+
+  it('refuses one where anything was bought', () => {
+    const placement = { slot: 0, row: 0, col: 0 };
+    expect(isRankedTranscript([placement, { t: 'undo' }])).toBe(false);
+    expect(isRankedTranscript([placement, { t: 'reroll' }])).toBe(false);
+    expect(isRankedTranscript([placement, { t: 'rotate', slot: 1 }])).toBe(false);
+  });
+
+  it('knows only the two modes', () => {
+    expect(isClassicMode('casual')).toBe(true);
+    expect(isClassicMode('ranked')).toBe(true);
+    for (const value of ['Ranked', '', null, undefined, 1]) {
+      expect(isClassicMode(value)).toBe(false);
+    }
+    expect(DEFAULT_CLASSIC_MODE).toBe('casual');
+  });
+});

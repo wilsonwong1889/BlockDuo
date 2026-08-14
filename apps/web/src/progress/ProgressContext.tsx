@@ -38,7 +38,7 @@ interface ProgressContextValue {
   addFriend: (friendCode: string) => Promise<ProgressProfile>;
   removeFriend: (friendCode: string) => Promise<ProgressProfile>;
   leaderboard: (mode: GameMode, scope: LeaderboardScope) => Promise<LeaderboardView>;
-  claimClassic: (seed: number, moves: GameAction[]) => Promise<ClaimResult | null>;
+  claimClassic: (seed: number, moves: GameAction[], ranked?: boolean) => Promise<ClaimResult | null>;
   /** Pay for a power. Resolves false when the gems were not there. */
   spendGems: (power: PowerName) => Promise<boolean>;
   spinWheel: (watchedAd?: boolean) => Promise<WheelResult>;
@@ -68,7 +68,7 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
   const flushPending = useCallback(async () => {
     for (const pending of loadPendingClassic()) {
       try {
-        const result = await claimClassicRequest(pending.seed, pending.moves);
+        const result = await claimClassicRequest(pending.seed, pending.moves, pending.ranked === true);
         removePendingClassic(pending);
         setProfile(result.profile);
       } catch (error) {
@@ -138,13 +138,13 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  const claimClassic = useCallback(async (seed: number, moves: GameAction[]) => {
+  const claimClassic = useCallback(async (seed: number, moves: GameAction[], ranked = false) => {
     const pending = { seed, moves };
     // Persist before the request: closing the tab during a slow response must
     // not lose a completed game's reward transcript.
     queuePendingClassic(pending);
     try {
-      const result = await claimClassicRequest(seed, moves);
+      const result = await claimClassicRequest(seed, moves, ranked);
       removePendingClassic(pending);
       setProfile(result.profile);
       announceProgressChange();

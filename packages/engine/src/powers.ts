@@ -29,6 +29,22 @@ export type PowerName = keyof typeof POWER_COSTS;
 export const MAX_UNDOS = 3;
 
 
+/**
+ * The two ways Classic is played.
+ *
+ * Casual is the game with everything in it — gems, powers, the wheel — and it
+ * is played for coins and your own best score. Ranked is the same board with
+ * nothing bought: no powers, no gems, one honest run. Only Ranked reaches the
+ * leaderboards, because a score you could buy your way to is not a ranking.
+ */
+export type ClassicMode = 'casual' | 'ranked';
+
+export const DEFAULT_CLASSIC_MODE: ClassicMode = 'casual';
+
+export function isClassicMode(value: unknown): value is ClassicMode {
+  return value === 'casual' || value === 'ranked';
+}
+
 export type GameAction =
   /** No tag is a placement, so every transcript written before powers is one. */
   | ({ t?: 'place' } & Move)
@@ -45,6 +61,18 @@ export function gemCost(actions: readonly GameAction[]): number {
     const kind = actionKind(action);
     return kind === 'place' ? total : total + POWER_COSTS[kind];
   }, 0);
+}
+
+/**
+ * Whether a transcript is one a ranked game could have produced.
+ *
+ * Ranked forbids the bought powers, so the check is simply that nothing in the
+ * transcript was paid for. Enforced where the score is claimed rather than
+ * where the buttons are drawn: a client that hides its own power bar is not
+ * evidence, a transcript is.
+ */
+export function isRankedTranscript(actions: readonly GameAction[]): boolean {
+  return actions.every((action) => actionKind(action) === 'place');
 }
 
 /** What one spin of the wheel costs. Gems have no other source. */

@@ -199,7 +199,7 @@ export function SocialScreen({ onHome, onPlayer }: Props) {
       <section className="leaderboard-card">
         <div className="segmented" aria-label="Leaderboard mode">
           <button className={mode === 'classic' ? 'active' : ''} onClick={() => setMode('classic')}>
-            Classic
+            Ranked Classic
           </button>
           <button className={mode === 'duo' ? 'active' : ''} onClick={() => setMode('duo')}>
             Duo teams
@@ -214,9 +214,11 @@ export function SocialScreen({ onHome, onPlayer }: Props) {
           </button>
         </div>
 
-        {mode === 'duo' && (
-          <p className="board-note">Only Ranked Duo rooms are scored here.</p>
-        )}
+        <p className="board-note">
+          {mode === 'duo'
+            ? 'Only Ranked Duo rooms are scored here.'
+            : 'Only Ranked Classic games are scored here.'}
+        </p>
 
         <Leaderboard
           title="All time"

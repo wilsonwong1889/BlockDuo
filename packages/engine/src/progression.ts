@@ -94,13 +94,30 @@ export interface ProgressProfile {
   coins: number;
   /** Spent on powers, won only from the wheel. */
   gems: number;
+  /** Whether today's free spin is still waiting. */
+  freeSpinAvailable: boolean;
   gamesPlayed: number;
   friends: FriendProfile[];
 }
 
 export interface WheelResult {
   gems: number;
+  /** True when the day's free spin paid for this one. */
+  free: boolean;
   profile: ProgressProfile;
+}
+
+/**
+ * The UTC day a moment falls in, as its date.
+ *
+ * UTC so the free spin arrives at the same instant for everyone rather than
+ * rolling around the world, and so a player cannot find a second one by
+ * changing their device's timezone.
+ */
+export function utcDayKey(now: number | Date = Date.now()): string {
+  const timestamp = now instanceof Date ? now.getTime() : now;
+  if (!Number.isFinite(timestamp)) throw new RangeError('Day timestamp must be finite');
+  return new Date(timestamp).toISOString().slice(0, 10);
 }
 
 export type LeaderboardScope = 'global' | 'friends';

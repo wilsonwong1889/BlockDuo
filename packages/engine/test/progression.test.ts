@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { coinReward, currentWeek, survivalMultiplier, weekWindow } from '../src/progression.js';
+import {
+  coinReward,
+  currentWeek,
+  survivalMultiplier,
+  utcDayKey,
+  weekWindow,
+} from '../src/progression.js';
 
 describe('survivalMultiplier', () => {
   it('increases by 0.25 after every 25 completed moves', () => {
@@ -106,6 +112,24 @@ describe('weekWindow', () => {
   it('also exposes currentWeek as a readable alias', () => {
     expect(currentWeek(Date.parse('2026-08-12T12:00:00.000Z'))).toEqual(
       weekWindow(Date.parse('2026-08-12T12:00:00.000Z')),
+    );
+  });
+});
+
+describe('utcDayKey', () => {
+  it('names the day a moment falls in', () => {
+    expect(utcDayKey(Date.parse('2026-08-14T12:00:00Z'))).toBe('2026-08-14');
+  });
+
+  it('turns over at midnight UTC, not at either edge of it', () => {
+    expect(utcDayKey(Date.parse('2026-08-14T23:59:59.999Z'))).toBe('2026-08-14');
+    expect(utcDayKey(Date.parse('2026-08-15T00:00:00.000Z'))).toBe('2026-08-15');
+  });
+
+  it('gives one answer wherever the player is', () => {
+    // The same instant, written in two zones, is still one day's free spin.
+    expect(utcDayKey(Date.parse('2026-08-14T20:00:00-06:00'))).toBe(
+      utcDayKey(Date.parse('2026-08-15T02:00:00Z')),
     );
   });
 });

@@ -1982,3 +1982,18 @@ html.high-contrast .app-version {
 html.reduce-motion .wheel.spinning {
   animation: none;
 }
+
+.free-dot {
+  display: inline-block;
+  width: 0.42rem;
+  height: 0.42rem;
+  margin-left: 0.3rem;
+  border-radius: 50%;
+  background: #a78bfa;
+  box-shadow: 0 0 8px rgba(167, 139, 250, 0.8);
+  vertical-align: middle;
+}
+
+.btn.primary.free {
+  background: linear-gradient(135deg, #a78bfa, #6ee7ff);
+}

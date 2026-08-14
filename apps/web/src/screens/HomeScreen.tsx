@@ -111,6 +111,8 @@ export function HomeScreen({ onClassic, onNewClassic, onDuo, onSocial, onProfile
         <span aria-hidden>·</span>
         <button className="link-btn" onClick={onWheel}>
           Wheel
+          {/* A free spin nobody notices is a free spin nobody takes. */}
+          {profile?.freeSpinAvailable && <span className="free-dot" aria-label="free spin ready" />}
         </button>
         <span aria-hidden>·</span>
         <button className="link-btn" onClick={() => setPanel('settings')}>

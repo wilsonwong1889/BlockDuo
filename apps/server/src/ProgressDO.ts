@@ -8,6 +8,7 @@ import {
   wheelSegment,
   WHEEL_COST_COINS,
   WHEEL_TOTAL_WEIGHT,
+  utcDayKey,
   weekWindow,
   type ClaimResult,
   type CoinReward,
@@ -51,6 +52,8 @@ interface StoredProfile {
   coins: number;
   /** Absent on profiles created before gems existed, which is the same as none. */
   gems?: number;
+  /** The UTC day whose free spin has been taken. */
+  freeSpinDay?: string;
   gamesPlayed: number;
   friendIds: string[];
   createdAt: number;
@@ -426,17 +429,24 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     return this.mutate(async () => {
       const profile = await this.authenticateRecord(credentials);
       if (!profile) return fail<WheelResult>(401, 'Your player session is no longer valid');
-      if (profile.coins < WHEEL_COST_COINS) {
+
+      // The day's free spin is taken first, so a player never pays while one is
+      // still waiting — and the day is stamped rather than counted down, which
+      // is what makes it survive a restart and refuse a second one.
+      const today = utcDayKey();
+      const free = profile.freeSpinDay !== today;
+      if (!free && profile.coins < WHEEL_COST_COINS) {
         return fail<WheelResult>(400, 'Not enough coins for a spin');
       }
 
       const segment = wheelSegment(randomRoll(WHEEL_TOTAL_WEIGHT));
-      profile.coins -= WHEEL_COST_COINS;
+      if (free) profile.freeSpinDay = today;
+      else profile.coins -= WHEEL_COST_COINS;
       profile.gems = (profile.gems ?? 0) + segment.gems;
       profile.updatedAt = Date.now();
       await this.ctx.storage.put(profileKey(profile.clientId), profile);
 
-      return ok({ gems: segment.gems, profile: await this.view(profile) });
+      return ok({ gems: segment.gems, free, profile: await this.view(profile) });
     });
   }
 
@@ -701,6 +711,7 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       name: profile.name,
       coins: profile.coins,
       gems: profile.gems ?? 0,
+      freeSpinAvailable: profile.freeSpinDay !== utcDayKey(),
       gamesPlayed: profile.gamesPlayed,
       friends: friends
         .filter((friend): friend is StoredProfile => !!friend)

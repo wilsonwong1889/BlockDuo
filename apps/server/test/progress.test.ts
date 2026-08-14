@@ -533,8 +533,40 @@ describe('progress friendships', () => {
     expect(forged.response.status).toBe(400);
   });
 
+  it('gives one free spin a day, then charges, then frees up again tomorrow', async () => {
+    const player = await createPlayer(`Daily ${crypto.randomUUID().slice(0, 8)}`);
+    expect(player.profile.freeSpinAvailable).toBe(true);
+
+    // First spin of the day is free even with nothing in the wallet.
+    const first = await post<WheelResult>('/api/progress/wheel', { ...player.identity });
+    expect(first.response.status).toBe(200);
+    expect(first.body.free).toBe(true);
+    expect(first.body.profile.coins).toBe(0);
+    expect(first.body.profile.freeSpinAvailable).toBe(false);
+    expect(first.body.profile.gems).toBe(first.body.gems);
+
+    // The second one wants coins, and there are none.
+    const second = await post<{ error: string }>('/api/progress/wheel', { ...player.identity });
+    expect(second.response.status).toBe(400);
+
+    // Roll the stamp back a day: tomorrow's spin is free again.
+    const stub = env.PROGRESS.get(env.PROGRESS.idFromName('global'));
+    await runInDurableObject(stub, async (_i, state) => {
+      const key = `profile:${player.identity.clientId}`;
+      const stored = await state.storage.get<Record<string, unknown>>(key);
+      await state.storage.put(key, { ...stored, freeSpinDay: '2020-01-01' });
+    });
+
+    expect((await getProfile(player)).freeSpinAvailable).toBe(true);
+    const tomorrow = await post<WheelResult>('/api/progress/wheel', { ...player.identity });
+    expect(tomorrow.body.free).toBe(true);
+  });
+
   it('turns coins into gems on the wheel, and refuses a spin nobody can afford', async () => {
     const player = await createPlayer(`Spinner ${crypto.randomUUID().slice(0, 8)}`);
+
+    // Take the free spin out of the way; this test is about the paid one.
+    await post<WheelResult>('/api/progress/wheel', { ...player.identity });
 
     const broke = await post<{ error: string }>('/api/progress/wheel', { ...player.identity });
     expect(broke.response.status).toBe(400);
@@ -549,9 +581,9 @@ describe('progress friendships', () => {
 
     const spin = await post<WheelResult>('/api/progress/wheel', { ...player.identity });
     expect(spin.response.status).toBe(200);
+    expect(spin.body.free).toBe(false);
     expect(WHEEL_SEGMENTS.map((s) => s.gems)).toContain(spin.body.gems);
     expect(spin.body.profile.coins).toBe(25);
-    expect(spin.body.profile.gems).toBe(spin.body.gems);
   });
 
   it('charges the listed price for a power and refuses what cannot be paid', async () => {

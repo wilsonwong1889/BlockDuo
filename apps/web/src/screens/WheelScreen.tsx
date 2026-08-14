@@ -15,10 +15,13 @@ export function WheelScreen({ onHome }: Props) {
   const { profile, spinWheel } = useProgress();
   const [spinning, setSpinning] = useState(false);
   const [won, setWon] = useState<number | null>(null);
+  const [wasFree, setWasFree] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const coins = profile?.coins ?? 0;
-  const affordable = coins >= WHEEL_COST_COINS;
+  const freeSpin = profile?.freeSpinAvailable ?? false;
+  // A free spin is always affordable, which is the whole point of it.
+  const affordable = freeSpin || coins >= WHEEL_COST_COINS;
 
   const spin = async () => {
     if (spinning || !affordable) return;
@@ -27,6 +30,7 @@ export function WheelScreen({ onHome }: Props) {
     setError(null);
     try {
       const result = await spinWheel();
+      setWasFree(result.free);
       // Held back so the wheel is seen to turn before it says what it landed
       // on; the server already decided, this is only the telling.
       window.setTimeout(() => {
@@ -56,21 +60,36 @@ export function WheelScreen({ onHome }: Props) {
 
         <div className="wheel-result" role="status" aria-live="polite">
           {spinning && 'Spinning…'}
-          {!spinning && won !== null && `You won ${won} gem${won === 1 ? '' : 's'}`}
+          {!spinning && won !== null &&
+            `You won ${won} gem${won === 1 ? '' : 's'}${wasFree ? ' — free spin' : ''}`}
           {!spinning && won === null && !error && 'Spin for gems'}
           {error && <span className="error">{error}</span>}
         </div>
 
-        <button className="btn primary big" onClick={spin} disabled={spinning || !affordable}>
-          {spinning ? 'Spinning…' : `Spin for ${WHEEL_COST_COINS.toLocaleString()} coins`}
+        <button
+          className={`btn primary big${freeSpin ? ' free' : ''}`}
+          onClick={spin}
+          disabled={spinning || !affordable}
+        >
+          {spinning
+            ? 'Spinning…'
+            : freeSpin
+              ? 'Free spin'
+              : `Spin for ${WHEEL_COST_COINS.toLocaleString()} coins`}
           <span className="btn-sub">
-            You have {coins.toLocaleString()} coin{coins === 1 ? '' : 's'}
+            {freeSpin
+              ? 'One a day, on the house'
+              : `You have ${coins.toLocaleString()} coin${coins === 1 ? '' : 's'}`}
           </span>
         </button>
-        {!affordable && (
+        {!freeSpin && !affordable && (
           <p className="panel-note">
-            {(WHEEL_COST_COINS - coins).toLocaleString()} more coins and the wheel is yours.
+            {(WHEEL_COST_COINS - coins).toLocaleString()} more coins, or come back tomorrow for a
+            free spin.
           </p>
+        )}
+        {!freeSpin && affordable && (
+          <p className="panel-note">Today&rsquo;s free spin is used. The next one is tomorrow.</p>
         )}
       </section>
 

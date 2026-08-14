@@ -1,11 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type {
   ClaimResult,
+  GameAction,
   GameMode,
   LeaderboardScope,
   LeaderboardView,
   Move,
+  PowerName,
   ProgressProfile,
+  WheelResult,
 } from '@blokduo/engine';
 import {
   loadName,
@@ -18,6 +21,8 @@ import {
   addFriend as addFriendRequest,
   announceProgressChange,
   claimClassic as claimClassicRequest,
+  spendGems as spendGemsRequest,
+  spinWheel as spinWheelRequest,
   fetchLeaderboard,
   fetchProfile,
   removeFriend as removeFriendRequest,
@@ -33,7 +38,10 @@ interface ProgressContextValue {
   addFriend: (friendCode: string) => Promise<ProgressProfile>;
   removeFriend: (friendCode: string) => Promise<ProgressProfile>;
   leaderboard: (mode: GameMode, scope: LeaderboardScope) => Promise<LeaderboardView>;
-  claimClassic: (seed: number, moves: Move[]) => Promise<ClaimResult | null>;
+  claimClassic: (seed: number, moves: GameAction[]) => Promise<ClaimResult | null>;
+  /** Pay for a power. Resolves false when the gems were not there. */
+  spendGems: (power: PowerName) => Promise<boolean>;
+  spinWheel: () => Promise<WheelResult>;
 }
 
 const ProgressContext = createContext<ProgressContextValue | null>(null);
@@ -130,7 +138,7 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  const claimClassic = useCallback(async (seed: number, moves: Move[]) => {
+  const claimClassic = useCallback(async (seed: number, moves: GameAction[]) => {
     const pending = { seed, moves };
     // Persist before the request: closing the tab during a slow response must
     // not lose a completed game's reward transcript.
@@ -146,6 +154,22 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const spendGems = useCallback(async (power: PowerName) => {
+    try {
+      setProfile(await spendGemsRequest(power));
+      return true;
+    } catch {
+      // Out of gems, or offline. The caller simply does not get the power.
+      return false;
+    }
+  }, []);
+
+  const spinWheel = useCallback(async () => {
+    const result = await spinWheelRequest();
+    setProfile(result.profile);
+    return result;
+  }, []);
+
   const value = useMemo<ProgressContextValue>(
     () => ({
       profile,
@@ -157,8 +181,10 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
       removeFriend,
       leaderboard,
       claimClassic,
+      spendGems,
+      spinWheel,
     }),
-    [profile, loading, error, refresh, rename, addFriend, removeFriend, leaderboard, claimClassic],
+    [profile, loading, error, refresh, rename, addFriend, removeFriend, leaderboard, claimClassic, spendGems, spinWheel],
   );
 
   return <ProgressContext.Provider value={value}>{children}</ProgressContext.Provider>;

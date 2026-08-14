@@ -6,6 +6,7 @@ import { DuoScreen } from './screens/DuoScreen';
 import { HomeScreen } from './screens/HomeScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
 import { SocialScreen } from './screens/SocialScreen';
+import { WheelScreen } from './screens/WheelScreen';
 import { loadName } from './storage';
 
 export type { Route };
@@ -61,6 +62,8 @@ export function App() {
           onHome={() => go('/')}
         />
       );
+    case 'wheel':
+      return <WheelScreen onHome={() => go('/')} />;
     case 'social':
       return <SocialScreen onHome={() => go('/')} onPlayer={(c) => go(`/player/${c}`)} />;
     default:
@@ -69,6 +72,7 @@ export function App() {
           onClassic={() => go('/classic')}
           onNewClassic={() => go('/classic/new')}
           onProfile={() => go('/player')}
+          onWheel={() => go('/wheel')}
           onDuo={() => go('/duo')}
           onSocial={() => go('/social')}
         />

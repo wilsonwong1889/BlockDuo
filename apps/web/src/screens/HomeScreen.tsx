@@ -15,11 +15,12 @@ interface Props {
   onClassic: () => void;
   onNewClassic: () => void;
   onProfile: () => void;
+  onWheel: () => void;
   onDuo: () => void;
   onSocial: () => void;
 }
 
-export function HomeScreen({ onClassic, onNewClassic, onDuo, onSocial, onProfile }: Props) {
+export function HomeScreen({ onClassic, onNewClassic, onDuo, onSocial, onProfile, onWheel }: Props) {
   const [settings, setSettings] = useState(loadAppSettings);
   const [panel, setPanel] = useState<'settings' | 'new-game' | null>(null);
   const { profile } = useProgress();
@@ -106,6 +107,10 @@ export function HomeScreen({ onClassic, onNewClassic, onDuo, onSocial, onProfile
       <div className="home-tools" aria-label="More options">
         <button className="link-btn" onClick={onProfile}>
           Your profile
+        </button>
+        <span aria-hidden>·</span>
+        <button className="link-btn" onClick={onWheel}>
+          Wheel
         </button>
         <span aria-hidden>·</span>
         <button className="link-btn" onClick={() => setPanel('settings')}>

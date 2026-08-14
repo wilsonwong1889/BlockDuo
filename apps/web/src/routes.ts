@@ -13,6 +13,7 @@ export type Route =
   | { name: 'classic'; fresh: boolean }
   | { name: 'duo'; code?: string }
   | { name: 'social' }
+  | { name: 'wheel' }
   /** No code means "whoever is playing on this device". */
   | { name: 'player'; code?: string };
 
@@ -23,6 +24,7 @@ export function parseHash(hash: string): Route {
   if (head === 'duo') return { name: 'duo', code: arg ? arg.toUpperCase() : undefined };
   if (head === 'player') return { name: 'player', code: arg ? arg.toUpperCase() : undefined };
   if (head === 'social') return { name: 'social' };
+  if (head === 'wheel') return { name: 'wheel' };
   return { name: 'home' };
 }
 
@@ -43,6 +45,8 @@ export function normalizedHash(route: Route): string {
       return route.code ? `#/player/${route.code}` : '#/player';
     case 'social':
       return '#/social';
+    case 'wheel':
+      return '#/wheel';
     default:
       return '#/';
   }

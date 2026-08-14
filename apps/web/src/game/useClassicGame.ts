@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  applyMove,
+  applyAction,
+  canUndo as sessionCanUndo,
   coinReward,
-  newGame,
+  newSession,
+  POWER_COSTS,
+  sessionFrom,
+  undosLeft as sessionUndosLeft,
   type CoinReward,
+  type GameAction,
   type GameState,
   type Move,
+  type PowerName,
+  type Session,
 } from '@blokduo/engine';
 import * as sfx from '../audio/sfx';
 import { useProgress } from '../progress/ProgressContext';
@@ -33,20 +40,31 @@ export interface ClassicGame {
   commit: (move: Move) => boolean;
   restart: () => void;
   reject: () => void;
+  /** Gem-bought powers. Each resolves false when it was not paid for or not legal. */
+  usePower: (power: PowerName, slot?: number) => Promise<boolean>;
+  canUndo: boolean;
+  undosLeft: number;
+  powerCosts: typeof POWER_COSTS;
 }
 
 export function useClassicGame(startFresh = false): ClassicGame {
   const [initial] = useState(() => (startFresh ? null : loadClassicGame()));
-  const [state, setState] = useState<GameState>(() => initial?.state ?? newGame());
+  // The session carries the few states behind the current one that an undo can
+  // return to; a resumed game starts with none, so undos are per sitting.
+  const [session, setSession] = useState<Session>(() =>
+    initial?.state ? sessionFrom(initial.state) : newSession(),
+  );
+  const state = session.state;
+  const setState = (next: GameState) => setSession((s) => ({ ...s, state: next }));
   const [best, setBest] = useState<number>(() => loadBest());
   const [rewardStatus, setRewardStatus] = useState<ClassicGame['rewardStatus']>(null);
-  const movesRef = useRef<Move[]>(initial?.moves ?? []);
+  const movesRef = useRef<GameAction[]>(initial?.moves ?? []);
   const bestRef = useRef(best);
   const persistedRef = useRef({ state, moves: movesRef.current, best });
   const saveTaskRef = useRef<ReturnType<typeof createDeferredTask> | null>(null);
   const rewardEligibleRef = useRef(initial?.rewardEligible ?? true);
   const claimKeyRef = useRef('');
-  const { claimClassic } = useProgress();
+  const { claimClassic, spendGems } = useProgress();
   const { clearFx, floats, shake, playMove, resetFx } = useGameFx();
 
   // Local storage serialisation is synchronous and can visibly interrupt a
@@ -134,23 +152,24 @@ export function useClassicGame(startFresh = false): ClassicGame {
   // and double-schedule every animation. It also lets `commit` report
   // synchronously whether the move was legal, which the drag handler needs in
   // order to decide between snapping the piece home and dropping it.
-  const stateRef = useRef(state);
-  stateRef.current = state;
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
 
   const commit = useCallback((move: Move): boolean => {
-    const current = stateRef.current;
-    const res = applyMove(current, move);
+    const current = sessionRef.current;
+    const res = applyAction(current, move);
     if (!res.ok) return false;
 
-    const { state: next, events } = res.result;
+    const next = res.session.state;
+    const events = res.events;
     movesRef.current = [...movesRef.current, move];
     const nextBest = Math.max(bestRef.current, next.score);
     persistedRef.current = { state: next, moves: movesRef.current, best: nextBest };
-    stateRef.current = next;
-    setState(next);
+    sessionRef.current = res.session;
+    setSession(res.session);
     saveTaskRef.current?.schedule();
 
-    playMove(current, events, move, { gameOverSound: true, prioritizeVisuals: true });
+    playMove(current.state, events, move, { gameOverSound: true, prioritizeVisuals: true });
 
     if (nextBest > bestRef.current) {
       bestRef.current = nextBest;
@@ -163,15 +182,59 @@ export function useClassicGame(startFresh = false): ClassicGame {
     resetFx();
     saveTaskRef.current?.cancel();
     saveGame(null);
-    const fresh = newGame();
+    const fresh = newSession();
     movesRef.current = [];
-    persistedRef.current = { state: fresh, moves: [], best: bestRef.current };
+    persistedRef.current = { state: fresh.state, moves: [], best: bestRef.current };
     rewardEligibleRef.current = true;
     claimKeyRef.current = '';
     setRewardStatus(null);
-    stateRef.current = fresh;
-    setState(fresh);
+    sessionRef.current = fresh;
+    setSession(fresh);
   }, [resetFx]);
+
+  /**
+   * Buy and apply one power.
+   *
+   * Paid for before it is applied, and the gems are only spent if the action
+   * was actually legal — asking the engine first means a rotation of an empty
+   * slot costs nothing. The action joins the transcript so the server's replay
+   * sees exactly the game that was played.
+   */
+  const usePower = useCallback(
+    async (power: PowerName, slot?: number): Promise<boolean> => {
+      const action: GameAction =
+        power === 'rotate' ? { t: 'rotate', slot: slot ?? 0 } : { t: power };
+
+      const dryRun = applyAction(sessionRef.current, action);
+      if (!dryRun.ok) {
+        sfx.playReject();
+        return false;
+      }
+
+      if (!(await spendGems(power))) {
+        sfx.playReject();
+        return false;
+      }
+
+      // Re-applied against whatever the session is now: paying is a round trip,
+      // and a piece could have been placed while it was in flight.
+      const applied = applyAction(sessionRef.current, action);
+      if (!applied.ok) return false;
+
+      movesRef.current = [...movesRef.current, action];
+      persistedRef.current = {
+        state: applied.session.state,
+        moves: movesRef.current,
+        best: bestRef.current,
+      };
+      sessionRef.current = applied.session;
+      setSession(applied.session);
+      saveTaskRef.current?.schedule();
+      resetFx();
+      return true;
+    },
+    [resetFx, spendGems],
+  );
 
   const reject = useCallback(() => sfx.playReject(), []);
 
@@ -186,5 +249,9 @@ export function useClassicGame(startFresh = false): ClassicGame {
     commit,
     restart,
     reject,
+    usePower,
+    canUndo: sessionCanUndo(session),
+    undosLeft: sessionUndosLeft(session),
+    powerCosts: POWER_COSTS,
   };
 }

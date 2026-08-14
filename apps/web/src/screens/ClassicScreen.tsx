@@ -4,6 +4,8 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { DragLayer } from '../components/DragLayer';
 import { GameOver } from '../components/GameOver';
 import { Hud } from '../components/Hud';
+import { PowerBar } from '../components/PowerBar';
+import { useProgress } from '../progress/ProgressContext';
 import { isModalOpen } from '../components/modalStack';
 import { Tray } from '../components/Tray';
 import { useClassicGame } from '../game/useClassicGame';
@@ -18,6 +20,7 @@ export function ClassicScreen({ fresh = false, onHome }: Props) {
   const { geom, boardRef, measureNow } = useGeometry();
   const game = useClassicGame(fresh);
   const [confirmRestart, setConfirmRestart] = useState(false);
+  const { profile } = useProgress();
   const [showGameOver, setShowGameOver] = useState(false);
 
   const placement = usePlacement(
@@ -96,6 +99,16 @@ export function ClassicScreen({ fresh = false, onHome }: Props) {
       </header>
 
       <Hud score={game.state.score} best={game.best} streak={game.state.streak} />
+
+      <PowerBar
+        gems={profile?.gems ?? 0}
+        costs={game.powerCosts}
+        canUndo={game.canUndo}
+        undosLeft={game.undosLeft}
+        selectedSlot={placement.selected}
+        disabled={game.state.over}
+        onUse={game.usePower}
+      />
 
       <div className="board-wrap">
         <Board

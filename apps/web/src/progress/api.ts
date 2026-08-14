@@ -3,9 +3,12 @@ import type {
   GameMode,
   LeaderboardScope,
   LeaderboardView,
+  GameAction,
   Move,
+  PowerName,
   ProgressProfile,
   PublicProfile,
+  WheelResult,
 } from '@blokduo/engine';
 import { apiUrl } from '../net/config';
 import {
@@ -123,8 +126,16 @@ export async function fetchPublicProfile(friendCode: string): Promise<PublicProf
   return payload as PublicProfile;
 }
 
-export function claimClassic(seed: number, moves: Move[]): Promise<ClaimResult> {
+export function claimClassic(seed: number, moves: GameAction[]): Promise<ClaimResult> {
   return authenticated('/api/progress/classic', { seed, moves });
+}
+
+export function spinWheel(): Promise<WheelResult> {
+  return authenticated('/api/progress/wheel');
+}
+
+export function spendGems(power: PowerName): Promise<ProgressProfile> {
+  return authenticated('/api/progress/gems/spend', { power });
 }
 
 export async function fetchRoomTicket(code: string, name: string): Promise<string> {

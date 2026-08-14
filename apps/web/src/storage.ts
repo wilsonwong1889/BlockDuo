@@ -3,7 +3,9 @@ import {
   decodeState,
   encodeState,
   isDuoMode,
+  replayActions,
   type DuoMode,
+  type GameAction,
   type GameState,
   type Move,
   type WireGameState,
@@ -55,14 +57,32 @@ export interface ProgressIdentity {
 
 export interface PendingClassicClaim {
   seed: number;
-  moves: Move[];
+  /** Placements and any powers used, in the order they happened. */
+  moves: GameAction[];
 }
 
 export interface SavedClassicGame {
   state: GameState;
-  moves: Move[];
+  moves: GameAction[];
   /** Old saves did not include a transcript and cannot be server-verified. */
   rewardEligible: boolean;
+}
+
+/**
+ * Whether this transcript really produces this game.
+ *
+ * Counting entries against moveCount was enough while every entry was a
+ * placement. Powers break that in both directions — a rotation adds an entry
+ * without a placement, an undo removes a placement without removing entries —
+ * so the only honest check is to replay it and see.
+ */
+function transcriptMatches(state: GameState, moves: GameAction[]): boolean {
+  try {
+    const replayed = replayActions(state.seed, moves);
+    return replayed.moveCount === state.moveCount && replayed.score === state.score;
+  } catch {
+    return false;
+  }
 }
 
 function read<T>(key: string, fallback: T): T {
@@ -146,7 +166,7 @@ export const saveProgressIdentity = (identity: ProgressIdentity) =>
 export const clearProgressIdentity = () => remove(KEYS.progressIdentity);
 
 /** Persist the in-progress classic game so a refresh or a backgrounded tab does not lose it. */
-export function saveGame(state: GameState | null, moves: Move[] = []) {
+export function saveGame(state: GameState | null, moves: GameAction[] = []) {
   if (!state || state.over) {
     remove(KEYS.saved);
     remove(KEYS.savedV2);
@@ -163,13 +183,13 @@ export function loadGame(): GameState | null {
 }
 
 export function loadClassicGame(): SavedClassicGame | null {
-  const modern = read<{ state: WireGameState; moves: Move[] } | null>(KEYS.savedV2, null);
+  const modern = read<{ state: WireGameState; moves: GameAction[] } | null>(KEYS.savedV2, null);
   if (modern) {
     try {
       const state = decodeState(modern.state);
       const moves = Array.isArray(modern.moves) ? modern.moves : [];
       if (state.over) return null;
-      return { state, moves, rewardEligible: state.moveCount === moves.length };
+      return { state, moves, rewardEligible: transcriptMatches(state, moves) };
     } catch {
       return null;
     }

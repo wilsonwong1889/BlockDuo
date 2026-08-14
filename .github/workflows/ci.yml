@@ -1,0 +1,39 @@
+name: CI
+
+# Every push and every pull request, because the point is that nobody has to
+# remember to run this.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    # The server suite starts the real workerd runtime, which is slower than
+    # the rest put together but is the only thing that proves the Durable
+    # Objects behave.
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # ci, not install: the lockfile is the point, and a dependency that
+      # drifted should fail here rather than be quietly accepted.
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      # Catches what typechecking cannot: a build that fails on config, on an
+      # import that only resolves in the editor, or on the version file.
+      - name: Build
+        run: npm run build

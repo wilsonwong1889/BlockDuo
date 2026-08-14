@@ -762,6 +762,30 @@ describe('progress friendships', () => {
   });
 });
 
+describe('display names', () => {
+  it('refuses a name nobody should have to see, and keeps the old one', async () => {
+    const player = await createPlayer(`Polite ${crypto.randomUUID().slice(0, 8)}`);
+
+    const refused = await post<{ error: string }>('/api/progress/profile', {
+      ...player.identity,
+      name: 'f4ggot',
+    });
+    expect(refused.response.status).toBe(400);
+    expect((await getProfile(player)).name).toBe(player.profile.name);
+  });
+
+  it('does not refuse an innocent name that contains a rude substring', async () => {
+    const player = await createPlayer(`Placeholder ${crypto.randomUUID().slice(0, 8)}`);
+    const renamed = await getProfile(player, 'Scunthorpe');
+    expect(renamed.name).toBe('Scunthorpe');
+  });
+
+  it('never lets a created player carry a banned name', async () => {
+    const player = await createPlayer('n1gger');
+    expect(player.profile.name).toBe('Player');
+  });
+});
+
 describe('classic progression claims', () => {
   it('replays the transcript, awards computed coins, and is idempotent', async () => {
     const player = await createPlayer('Classic claimant');

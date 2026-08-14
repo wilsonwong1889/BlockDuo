@@ -2009,3 +2009,17 @@ html.reduce-motion .wheel.spinning {
 .btn.ranked-btn {
   box-shadow: inset 0 0 0 1px rgba(250, 204, 21, 0.35);
 }
+
+.crash {
+  justify-content: center;
+  gap: 1.2rem;
+  text-align: center;
+}
+
+.crash-note {
+  max-width: 22rem;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}

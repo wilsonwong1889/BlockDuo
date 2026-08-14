@@ -13,3 +13,6 @@ apps/mobile/android/app/src/main/assets/public/
 apps/mobile/ios/App/Pods/
 apps/mobile/android/.gradle/
 apps/mobile/android/local.properties
+
+# Working documents that should never reach a public repo.
+*.docx

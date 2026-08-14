@@ -2,6 +2,8 @@ import { DurableObject } from 'cloudflare:workers';
 import {
   actionKind,
   coinReward,
+  cleanName,
+  isAllowedName,
   isRankedTranscript,
   isSupportedGameSeed,
   POWER_COSTS,
@@ -244,6 +246,11 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     if (!profile) return fail(401, 'Your player session is no longer valid');
 
     if (name !== undefined) {
+      // A player who picks a name has to be told it was refused. Everywhere
+      // else — a Duo result recording who played — falls back quietly instead.
+      if (typeof name === 'string' && name.trim() && !isAllowedName(name.trim())) {
+        return fail(400, 'That name is not allowed. Please pick another.');
+      }
       const nextName = cleanName(name);
       if (profile.name !== nextName) {
         profile.name = nextName;
@@ -856,11 +863,6 @@ function scoreKey(window: string, mode: GameMode, id: string) {
   return `${scorePrefix(window, mode)}${id}`;
 }
 
-function cleanName(value: unknown): string {
-  if (typeof value !== 'string') return 'Player';
-  const cleaned = value.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 20);
-  return cleaned || 'Player';
-}
 
 function normalizeFriendCode(value: unknown): string {
   return typeof value === 'string' ? value.trim().toUpperCase() : '';

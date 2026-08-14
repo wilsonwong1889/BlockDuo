@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { reportError } from '../telemetry';
 
 interface Props {
   children: ReactNode;
@@ -26,10 +27,9 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    // Nothing collects these yet. Logging keeps them in the console for a
-    // player who reports a problem, and marks the one place a reporting
-    // service is wired in later.
     console.error('BLOKDUO crashed while rendering', error, info.componentStack);
+    // The crash that took the screen down is the one most worth hearing about.
+    reportError(error, 'render');
   }
 
   private reload = () => {

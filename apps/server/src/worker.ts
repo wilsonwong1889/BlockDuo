@@ -64,7 +64,11 @@ export default {
     if (url.pathname === '/api/progress/player' && request.method === 'POST') {
       const body = await bodyOf(request);
       if (!body) return json({ error: 'Invalid JSON body' }, 400);
-      return resultJson(await progressStub(env).createPlayer(String(body.name ?? 'Player')));
+      // Cloudflare sets this on every real request; absent means local.
+      const address = request.headers.get('CF-Connecting-IP') ?? '';
+      return resultJson(
+        await progressStub(env).createPlayer(String(body.name ?? 'Player'), address),
+      );
     }
 
     // The one progression route with no credentials: a public profile, keyed by
@@ -123,6 +127,30 @@ export default {
           ),
         );
       }
+    }
+
+    /**
+     * Crash reports from the browser.
+     *
+     * Logged rather than stored: they show up in `wrangler tail` and in the
+     * Workers dashboard, which is somewhere to look without standing up a
+     * service or storing anything about anybody. Nothing is kept, so nothing
+     * has to be pruned or protected.
+     */
+    if (url.pathname === '/api/telemetry/error' && request.method === 'POST') {
+      const body = await bodyOf(request);
+      if (!body) return new Response(null, { status: 204, headers: CORS });
+
+      const clip = (value: unknown, max: number) =>
+        typeof value === 'string' ? value.slice(0, max) : '';
+      console.error('client-error', {
+        message: clip(body.message, 300),
+        stack: clip(body.stack, 2_000),
+        screen: clip(body.screen, 100),
+        version: clip(body.version, 40),
+        agent: clip(request.headers.get('User-Agent'), 200),
+      });
+      return new Response(null, { status: 204, headers: CORS });
     }
 
     // POST /api/room — mint a room and return its code.

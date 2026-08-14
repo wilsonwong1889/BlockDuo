@@ -167,9 +167,51 @@ const fail = <T>(status: number, error: string): ProgressResult<T> => ({
  * across every room. The singleton layout is intentionally simple for the
  * current beta; its public contract can move to D1 without changing clients.
  */
+/** New players one address may create per window, and how long the window is. */
+const NEW_PLAYERS_PER_WINDOW = 6;
+const NEW_PLAYER_WINDOW_MS = 60 * 60_000;
+
 export class ProgressDO extends DurableObject<Record<string, never>> {
   /** Mutating RPCs can interleave at awaits; serialize them for exact-once ledgers. */
   private mutationTail: Promise<void> = Promise.resolve();
+
+  /**
+   * Recent sign-ups per address, in memory rather than in storage.
+   *
+   * Every profile is a permanent key, so an unbounded mint is unbounded growth.
+   * Keeping the counters in memory means they cost nothing to store and are
+   * lost if this object is ever evicted — which is fine, because eviction only
+   * happens when nothing is going on, and a limiter matters under load.
+   */
+  private recentSignups = new Map<string, number[]>();
+
+  private signupAllowed(address: string): boolean {
+    // No address is local development or a test; there is nobody to limit.
+    if (!address) return true;
+
+    const now = Date.now();
+    const recent = (this.recentSignups.get(address) ?? []).filter(
+      (at) => now - at < NEW_PLAYER_WINDOW_MS,
+    );
+    if (recent.length >= NEW_PLAYERS_PER_WINDOW) {
+      this.recentSignups.set(address, recent);
+      return false;
+    }
+
+    recent.push(now);
+    this.recentSignups.set(address, recent);
+
+    // Bounded upkeep: drop addresses whose window has passed entirely, so a
+    // long-lived object does not accumulate a row per visitor it ever saw.
+    if (this.recentSignups.size > 5_000) {
+      for (const [key, times] of this.recentSignups) {
+        if (times.every((at) => now - at >= NEW_PLAYER_WINDOW_MS)) {
+          this.recentSignups.delete(key);
+        }
+      }
+    }
+    return true;
+  }
 
   private async mutate<T>(operation: () => Promise<T>): Promise<T> {
     const previous = this.mutationTail;
@@ -185,7 +227,10 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     }
   }
 
-  async createPlayer(name: string): Promise<ProgressResult<CreatedPlayer>> {
+  async createPlayer(name: string, address = ''): Promise<ProgressResult<CreatedPlayer>> {
+    if (!this.signupAllowed(address)) {
+      return fail(429, 'Too many new players from here. Try again later.');
+    }
     return this.mutate(() => this.createPlayerLocked(name));
   }
 

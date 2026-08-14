@@ -762,6 +762,69 @@ describe('progress friendships', () => {
   });
 });
 
+describe('limits and reports', () => {
+  /** Requests carrying the header Cloudflare puts on every real request. */
+  const fromAddress = (address: string, name: string) =>
+    SELF.fetch(`${ORIGIN}/api/progress/player`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': address },
+      body: JSON.stringify({ name }),
+    });
+
+  it('stops one address minting players without end', async () => {
+    const address = `203.0.113.${Math.floor(Math.random() * 200) + 1}`;
+
+    // Every profile is a permanent key, so the cap is what keeps a script from
+    // growing storage for ever.
+    let created = 0;
+    for (let i = 0; i < 12; i++) {
+      const response = await fromAddress(address, `Flood ${i}`);
+      if (response.status === 200) created += 1;
+      else {
+        expect(response.status).toBe(429);
+        break;
+      }
+    }
+    expect(created).toBeGreaterThan(0);
+    expect(created).toBeLessThan(12);
+
+    // A different address is unaffected: the limit is per visitor, not global.
+    const elsewhere = await fromAddress('198.51.100.7', 'Innocent bystander');
+    expect(elsewhere.status).toBe(200);
+  });
+
+  it('leaves local and test traffic alone', async () => {
+    // No address header at all, which is what local development looks like.
+    for (let i = 0; i < 8; i++) {
+      const player = await createPlayer(`Local ${i}-${crypto.randomUUID().slice(0, 6)}`);
+      expect(player.profile.friendCode).toMatch(/^BD-/);
+    }
+  });
+
+  it('accepts a crash report and keeps nothing', async () => {
+    const response = await SELF.fetch(`${ORIGIN}/api/telemetry/error`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: 'Cannot read properties of null',
+        stack: 'x'.repeat(50_000),
+        screen: '#/classic',
+        version: '1.8.14.13',
+      }),
+    });
+    expect(response.status).toBe(204);
+  });
+
+  it('shrugs off a crash report that is not even JSON', async () => {
+    const response = await SELF.fetch(`${ORIGIN}/api/telemetry/error`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: 'not json at all',
+    });
+    expect(response.status).toBe(204);
+  });
+});
+
 describe('display names', () => {
   it('refuses a name nobody should have to see, and keeps the old one', async () => {
     const player = await createPlayer(`Polite ${crypto.randomUUID().slice(0, 8)}`);

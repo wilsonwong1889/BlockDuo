@@ -2,12 +2,14 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { installGlobalErrorReporting } from './telemetry';
 import { unlockAudio } from './audio/sfx';
 import { initNative, isNative } from './native';
 import { initialiseAppSettings } from './preferences';
 import { ProgressProvider } from './progress/ProgressContext';
 import './styles/app.css';
 
+installGlobalErrorReporting();
 initialiseAppSettings();
 void initNative();
 

@@ -52,6 +52,7 @@ interface StoredProfile {
   totalScore?: number;
   totalLines?: number;
   bestStreak?: number;
+  lastPlayedAt?: number;
 }
 
 /** One finished, server-verified game, folded into a profile's totals. */
@@ -62,8 +63,9 @@ interface GameOutcome {
   bestStreak: number;
 }
 
-function recordOutcome(profile: StoredProfile, outcome: GameOutcome): void {
+function recordOutcome(profile: StoredProfile, outcome: GameOutcome, at: number): void {
   profile.gamesPlayed += 1;
+  profile.lastPlayedAt = at;
   if (outcome.mode === 'classic') profile.classicGames = (profile.classicGames ?? 0) + 1;
   else profile.duoGames = (profile.duoGames ?? 0) + 1;
   profile.bestScore = Math.max(profile.bestScore ?? 0, outcome.score);
@@ -82,6 +84,7 @@ function statsOf(profile: StoredProfile): PlayerStats {
     totalLines: profile.totalLines ?? 0,
     bestStreak: profile.bestStreak ?? 0,
     coins: profile.coins,
+    lastPlayedAt: profile.lastPlayedAt ?? null,
   };
 }
 
@@ -457,13 +460,18 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     const ranked = await this.rankedWrites(record);
 
     profile.coins = safeAdd(profile.coins, reward.totalCoins);
-    recordOutcome(profile, {
-      mode: 'classic',
-      score: finalState.score,
-      lines: finalState.linesCleared,
-      bestStreak: finalState.bestStreak,
-    });
-    profile.updatedAt = Date.now();
+    const finishedAt = Date.now();
+    recordOutcome(
+      profile,
+      {
+        mode: 'classic',
+        score: finalState.score,
+        lines: finalState.linesCleared,
+        bestStreak: finalState.bestStreak,
+      },
+      finishedAt,
+    );
+    profile.updatedAt = finishedAt;
     const writes: Record<string, StoredProfile | StoredClaim | RankedScore> = {
       ...ranked.writes,
       [profileKey(profile.clientId)]: profile,
@@ -502,12 +510,16 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       profile.coins = safeAdd(profile.coins, reward.totalCoins);
       // Duo is co-operative: the team's board is the one both players played,
       // so both take the same result rather than a share of it.
-      recordOutcome(profile, {
-        mode: 'duo',
-        score: reward.score,
-        lines: Math.max(0, Math.floor(input.lines ?? 0)),
-        bestStreak: Math.max(0, Math.floor(input.bestStreak ?? 0)),
-      });
+      recordOutcome(
+        profile,
+        {
+          mode: 'duo',
+          score: reward.score,
+          lines: Math.max(0, Math.floor(input.lines ?? 0)),
+          bestStreak: Math.max(0, Math.floor(input.bestStreak ?? 0)),
+        },
+        now,
+      );
       profile.updatedAt = now;
       writes[profileKey(profile.clientId)] = profile;
     }

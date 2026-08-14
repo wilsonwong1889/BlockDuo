@@ -55,6 +55,12 @@ export interface PlayerStats {
   /** Longest clearing streak reached in any one game. */
   bestStreak: number;
   coins: number;
+  /**
+   * When their most recent game finished. Null for a player whose last game
+   * predates this being recorded — nothing stored it, so it is unknown rather
+   * than long ago.
+   */
+  lastPlayedAt: number | null;
 }
 
 export const EMPTY_PLAYER_STATS: PlayerStats = {
@@ -66,6 +72,7 @@ export const EMPTY_PLAYER_STATS: PlayerStats = {
   totalLines: 0,
   bestStreak: 0,
   coins: 0,
+  lastPlayedAt: null,
 };
 
 /** What anyone may see about a player. Deliberately no identifiers to act with. */

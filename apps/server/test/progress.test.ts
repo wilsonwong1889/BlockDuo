@@ -422,6 +422,8 @@ describe('progress friendships', () => {
       totalLines: game.state.linesCleared,
       bestStreak: game.state.bestStreak,
     });
+    expect(body.stats.lastPlayedAt).toBeGreaterThan(body.joinedAt - 1);
+    expect(body.stats.lastPlayedAt).toBeLessThanOrEqual(Date.now());
     // Nothing that could be used to act as this player may appear here.
     expect(JSON.stringify(body)).not.toContain(player.identity.clientId);
     expect(JSON.stringify(body)).not.toContain(player.identity.token);

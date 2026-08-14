@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { averageGameScore, type PublicProfile } from '@blokduo/engine';
 import { fetchPublicProfile } from '../progress/api';
 import { useProgress } from '../progress/ProgressContext';
+import { timeAgo } from '../time';
 
 interface Props {
   /** A friend code, or null for "whoever is playing on this device". */
@@ -99,7 +100,12 @@ export function ProfileScreen({ code, onHome }: Props) {
               <span className="eyebrow">{isMe ? 'You' : 'Player'}</span>
               <div className="profile-display-name">{player.name}</div>
               <div className="profile-code">{player.friendCode}</div>
-              <small className="profile-since">Playing since {joinedLabel(player.joinedAt)}</small>
+              <small className="profile-since">
+                Playing since {joinedLabel(player.joinedAt)}
+                {player.stats.lastPlayedAt !== null && (
+                  <> · last played {timeAgo(player.stats.lastPlayedAt)}</>
+                )}
+              </small>
             </div>
             <button className="btn compact" onClick={share}>
               {copied ? 'Link copied' : 'Share'}

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import type { CoinReward } from '@blokduo/engine';
 import { Modal } from './Modal';
 
@@ -18,9 +17,6 @@ interface Props {
   note?: string;
   reward?: CoinReward | null;
   rewardStatus?: 'pending' | 'awarded' | 'queued' | 'unavailable' | null;
-  /** Offered only where a revive is possible, which today is Classic. */
-  onRevive?: () => Promise<boolean>;
-  revivesLeft?: number;
 }
 
 export function GameOver({
@@ -34,10 +30,7 @@ export function GameOver({
   note,
   reward,
   rewardStatus,
-  onRevive,
-  revivesLeft = 0,
 }: Props) {
-  const [reviving, setReviving] = useState(false);
   const isRecord = best !== undefined && score > 0 && score >= best;
 
   return (
@@ -80,23 +73,6 @@ export function GameOver({
         ))}
       </div>
 
-      {onRevive && revivesLeft > 0 && (
-        <button
-          className="btn revive"
-          disabled={reviving}
-          onClick={() => {
-            setReviving(true);
-            void onRevive().finally(() => setReviving(false));
-          }}
-        >
-          {reviving ? 'Watching…' : 'Watch an advert to carry on'}
-          {/* It clears at least two rows and sometimes more, so the promise
-              stated here is the one the engine actually guarantees. */}
-          <span className="btn-sub">
-            Clears space · three pieces, two will fit · {revivesLeft} left
-          </span>
-        </button>
-      )}
 
       <div className="panel-actions">
         <button className="btn primary" onClick={onPrimary} autoFocus>

@@ -600,6 +600,21 @@ describe('progress friendships', () => {
     expect((await getProfile(player)).adSpinsLeft).toBe(MAX_AD_SPINS_PER_DAY);
   });
 
+  it('refuses a transcript containing a power that no longer exists', async () => {
+    const player = await createPlayer(`Ghost ${crypto.randomUUID().slice(0, 8)}`);
+    const game = completedClassic(gameSeed(0x0e0571));
+
+    // Revive was removed along with the adverts that paid for it. A crafted
+    // transcript must not be able to bring it back and claim the score.
+    const forged = await post<{ error: string }>('/api/progress/classic', {
+      ...player.identity,
+      seed: game.state.seed,
+      moves: [...game.moves, { t: 'revive' }],
+    });
+    expect(forged.response.status).toBe(400);
+    expect((await getProfile(player)).gamesPlayed).toBe(0);
+  });
+
   it('turns coins into gems on the wheel, and refuses a spin nobody can afford', async () => {
     const player = await createPlayer(`Spinner ${crypto.randomUUID().slice(0, 8)}`);
 

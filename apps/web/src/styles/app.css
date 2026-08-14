@@ -1998,9 +1998,3 @@ html.reduce-motion .wheel.spinning {
   background: linear-gradient(135deg, #a78bfa, #6ee7ff);
 }
 
-.btn.revive {
-  width: 100%;
-  margin-top: 0.9rem;
-  background: linear-gradient(135deg, rgba(167, 139, 250, 0.9), rgba(110, 231, 255, 0.85));
-  color: #0b1020;
-}

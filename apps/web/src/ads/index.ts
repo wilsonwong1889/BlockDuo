@@ -11,7 +11,7 @@
  * resolves once the advert is finished, and can report that it was not.
  */
 
-export type AdPlacement = 'wheel-spin' | 'revive';
+export type AdPlacement = 'wheel-spin';
 
 export interface AdResult {
   /** False when the advert was dismissed early, failed to load, or was blocked. */

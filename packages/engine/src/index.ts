@@ -8,3 +8,4 @@ export * from './game.js';
 export * from './serde.js';
 export * from './protocol.js';
 export * from './progression.js';
+export * from './powers.js';

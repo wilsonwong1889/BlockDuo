@@ -94,6 +94,54 @@ export function getPiece(id: string): Piece {
   return p;
 }
 
+/** A shape's cells as a comparable key, independent of where it sits. */
+function shapeKey(cells: ReadonlyArray<readonly [number, number]>): string {
+  const minRow = Math.min(...cells.map((c) => c[0]));
+  const minCol = Math.min(...cells.map((c) => c[1]));
+  return cells
+    .map(([r, c]) => `${r - minRow},${c - minCol}`)
+    .sort()
+    .join(' ');
+}
+
+const BY_SHAPE = new Map(PIECES.map((p) => [shapeKey(p.cells), p]));
+
+/**
+ * The same shape turned a quarter turn clockwise.
+ *
+ * Derived from the geometry rather than written out as 37 pairs: the catalog
+ * already contains every orientation of every family, so the rotation of a
+ * piece is simply whichever catalog entry has the rotated shape. Written by
+ * hand this would be 37 chances to transpose two ids and never notice.
+ *
+ * A piece with rotational symmetry — 1x1, 2x2, 3x3 — is its own rotation, and
+ * says so rather than pretending to be something else.
+ */
+const ROTATED = new Map(
+  PIECES.map((piece) => {
+    const height = piece.h;
+    // (row, col) -> (col, height - 1 - row)
+    const turned = piece.cells.map(
+      ([r, c]) => [c, height - 1 - r] as const,
+    );
+    const match = BY_SHAPE.get(shapeKey(turned));
+    if (!match) throw new Error(`No catalog piece for the rotation of ${piece.id}`);
+    return [piece.id, match.id];
+  }),
+);
+
+/** The id of this piece turned a quarter turn clockwise. */
+export function rotatedPieceId(id: string): string {
+  const rotated = ROTATED.get(id);
+  if (!rotated) throw new Error(`Unknown piece id: ${id}`);
+  return rotated;
+}
+
+/** True when turning this piece would visibly change it. */
+export function canRotate(id: string): boolean {
+  return rotatedPieceId(id) !== id;
+}
+
 export function hasPiece(id: string): boolean {
   return BY_ID.has(id);
 }

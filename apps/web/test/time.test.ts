@@ -7,6 +7,8 @@ const ago = (ms: number) => timeAgo(NOW - ms, NOW);
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
+const WEEK = 7 * DAY;
+const MONTH = 30 * DAY;
 
 describe('timeAgo', () => {
   it('treats anything inside the last minute as now', () => {
@@ -14,21 +16,38 @@ describe('timeAgo', () => {
     expect(ago(59_000)).toBe('just now');
   });
 
-  it('counts minutes and hours, singular and plural', () => {
+  it('counts in whichever of the five units fits', () => {
     expect(ago(MINUTE)).toBe('1 minute ago');
-    expect(ago(5 * MINUTE)).toBe('5 minutes ago');
     expect(ago(HOUR)).toBe('1 hour ago');
+    expect(ago(DAY)).toBe('1 day ago');
+    expect(ago(WEEK)).toBe('1 week ago');
+    expect(ago(MONTH)).toBe('1 month ago');
+  });
+
+  it('pluralises past one', () => {
+    expect(ago(5 * MINUTE)).toBe('5 minutes ago');
     expect(ago(3 * HOUR)).toBe('3 hours ago');
-  });
-
-  it('names yesterday rather than counting it', () => {
-    expect(ago(DAY)).toBe('yesterday');
     expect(ago(2 * DAY)).toBe('2 days ago');
-    expect(ago(29 * DAY)).toBe('29 days ago');
+    expect(ago(3 * WEEK)).toBe('3 weeks ago');
+    expect(ago(4 * MONTH)).toBe('4 months ago');
   });
 
-  it('falls back to a month once the day has stopped mattering', () => {
-    expect(ago(200 * DAY)).toMatch(/\d{4}$/);
+  it('always answers in the largest unit that fits', () => {
+    expect(ago(90 * MINUTE)).toBe('1 hour ago');
+    expect(ago(26 * HOUR)).toBe('1 day ago');
+    expect(ago(9 * DAY)).toBe('1 week ago');
+    expect(ago(40 * DAY)).toBe('1 month ago');
+  });
+
+  it('steps up exactly at each boundary, not before', () => {
+    expect(ago(HOUR - 1)).toBe('59 minutes ago');
+    expect(ago(DAY - 1)).toBe('23 hours ago');
+    expect(ago(WEEK - 1)).toBe('6 days ago');
+    expect(ago(MONTH - 1)).toBe('4 weeks ago');
+  });
+
+  it('keeps months as the ceiling rather than reaching for years', () => {
+    expect(ago(365 * DAY)).toBe('12 months ago');
   });
 
   it('does not report the future as a long time ago', () => {

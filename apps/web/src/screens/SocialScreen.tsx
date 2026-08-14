@@ -216,8 +216,8 @@ export function SocialScreen({ onHome, onPlayer }: Props) {
 
         <p className="board-note">
           {mode === 'duo'
-            ? 'Only Ranked Duo rooms are scored here.'
-            : 'Only Ranked Classic games are scored here.'}
+            ? 'Only Ranked Duo rooms are scored here. Updates every minute.'
+            : 'Only Ranked Classic games are scored here. Updates every minute.'}
         </p>
 
         <Leaderboard

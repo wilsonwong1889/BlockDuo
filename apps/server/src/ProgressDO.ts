@@ -167,6 +167,16 @@ const fail = <T>(status: number, error: string): ProgressResult<T> => ({
  * across every room. The singleton layout is intentionally simple for the
  * current beta; its public contract can move to D1 without changing clients.
  */
+/**
+ * How long a sorted board is reused before it is read again.
+ *
+ * The scan is the expensive part and it is identical for everyone looking at
+ * the same board, so it is done once a minute rather than once a reader. A
+ * score set inside that minute appears at the end of it, which is the trade
+ * being made deliberately: a leaderboard is not a live scoreboard.
+ */
+const BOARD_CACHE_MS = 60_000;
+
 /** New players one address may create per window, and how long the window is. */
 const NEW_PLAYERS_PER_WINDOW = 6;
 const NEW_PLAYER_WINDOW_MS = 60 * 60_000;
@@ -184,6 +194,33 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
    * happens when nothing is going on, and a limiter matters under load.
    */
   private recentSignups = new Map<string, number[]>();
+
+  /**
+   * Sorted score records per board, and public codes per player.
+   *
+   * Both are in memory: losing them costs one rescan, and keeping them in
+   * storage would mean writing on every read. Friend codes never change once
+   * issued, so those need no expiry at all — only a cap, so a very long-lived
+   * object cannot grow a row for every player it has ever shown.
+   */
+  private boards = new Map<string, { at: number; records: RankedScore[] }>();
+  private codes = new Map<string, string>();
+
+  private async sortedBoard(window: string, mode: GameMode): Promise<RankedScore[]> {
+    const key = `${window}:${mode}`;
+    const cached = this.boards.get(key);
+    if (cached && Date.now() - cached.at < BOARD_CACHE_MS) return cached.records;
+
+    const records = [
+      ...(await this.ctx.storage.list<RankedScore>({ prefix: scorePrefix(window, mode) })).values(),
+    ].sort(compareScores);
+
+    // Only the current windows are worth holding; last week's board is read
+    // once in a blue moon and would otherwise sit in memory for ever.
+    if (this.boards.size > 8) this.boards.clear();
+    this.boards.set(key, { at: Date.now(), records });
+    return records;
+  }
 
   private signupAllowed(address: string): boolean {
     // No address is local development or a test; there is nobody to limit.
@@ -393,9 +430,7 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     const allowed = new Set([profile.clientId, ...profile.friendIds]);
 
     const board = async (window: string) => {
-      const records = [
-        ...(await this.ctx.storage.list<RankedScore>({ prefix: scorePrefix(window, mode) })).values(),
-      ].sort(compareScores);
+      const records = await this.sortedBoard(window, mode);
       const filtered =
         scope === 'friends'
           ? records.filter((record) => record.participantIds.some((id) => allowed.has(id)))
@@ -754,6 +789,7 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       }
 
       await this.ctx.storage.put(STATS_BACKFILL_KEY, Date.now());
+      this.boards.clear();
     });
   }
 
@@ -767,13 +803,21 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
   private async friendCodesFor(clientIds: string[]): Promise<Map<string, string>> {
     const unique = [...new Set(clientIds)];
     const codes = new Map<string, string>();
+    const missing = unique.filter((id) => {
+      const known = this.codes.get(id);
+      if (known) codes.set(id, known);
+      return !known;
+    });
 
     // Durable Object storage reads at most 128 keys at a time.
-    for (let i = 0; i < unique.length; i += MAX_PUT_KEYS) {
-      const slice = unique.slice(i, i + MAX_PUT_KEYS);
+    for (let i = 0; i < missing.length; i += MAX_PUT_KEYS) {
+      const slice = missing.slice(i, i + MAX_PUT_KEYS);
       const found = await this.ctx.storage.get<StoredProfile>(slice.map(profileKey));
       for (const profile of found.values()) {
-        if (profile?.clientId) codes.set(profile.clientId, profile.friendCode);
+        if (!profile?.clientId) continue;
+        codes.set(profile.clientId, profile.friendCode);
+        if (this.codes.size > 50_000) this.codes.clear();
+        this.codes.set(profile.clientId, profile.friendCode);
       }
     }
     return codes;
@@ -875,6 +919,8 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
         await this.ctx.storage.put(Object.fromEntries(entries.slice(i, i + MAX_PUT_KEYS)));
       }
       await this.ctx.storage.put(ALL_TIME_BACKFILL_KEY, Date.now());
+      // Records changed underneath any board already held.
+      this.boards.clear();
     });
   }
 }

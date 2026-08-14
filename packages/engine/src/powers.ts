@@ -1,8 +1,8 @@
-import { cloneBoard, SIZE } from './board.js';
+import { cloneBoard, hasAnyPlacement, SIZE } from './board.js';
 import { dealHand, HAND_SIZE } from './deal.js';
 import { applyMove, isGameOver, newGame } from './game.js';
-import { rotatedPieceId } from './pieces.js';
-import type { GameEvent, GameState, Move } from './types.js';
+import { getPiece, rotatedPieceId } from './pieces.js';
+import type { Board, GameEvent, GameState, HandSlot, Move } from './types.js';
 
 /**
  * Gem-bought powers, and the transcript that keeps them honest.
@@ -30,7 +30,7 @@ export type PowerName = keyof typeof POWER_COSTS;
 export const MAX_UNDOS = 3;
 
 /**
- * Rows a revive clears, from the bottom up.
+ * Rows a revive clears, from the bottom up, before it starts trying harder.
  *
  * A revive has to actually save the game. Dealing a fresh hand alone would not:
  * a game ends because nothing in the hand fits, and on a nearly full board the
@@ -39,6 +39,18 @@ export const MAX_UNDOS = 3;
  * given up on.
  */
 export const REVIVE_ROWS = 2;
+
+/**
+ * How many of the three pieces a revive must leave playable.
+ *
+ * One would technically be a game, but a single forced move that ends the run
+ * again is not a revive — it is the same loss with an advert in front of it.
+ * Two means a choice, which is the least a player can be given back.
+ */
+export const REVIVE_MIN_PLAYABLE = 2;
+
+/** Draws attempted per board before more rows are cleared. */
+const REVIVE_DEAL_ATTEMPTS = 24;
 
 /**
  * Revives per game.
@@ -176,23 +188,52 @@ function rotated(state: GameState, slot: number): GameState | null {
   return next;
 }
 
-/** Wipe the bottom rows and deal into the space, so play can carry on. */
-function revived(state: GameState): GameState {
-  const board = cloneBoard(state.board);
-  board.fill(0, (SIZE - REVIVE_ROWS) * SIZE, SIZE * SIZE);
+function playableCount(hand: ReadonlyArray<HandSlot | null>, board: Board): number {
+  return hand.filter((slot) => slot && hasAnyPlacement(board, getPiece(slot.pieceId))).length;
+}
 
-  const dealt = dealHand(state.rng, board);
-  const next: GameState = {
-    ...state,
-    board,
-    hand: dealt.hand.slice(),
-    rng: dealt.rng,
-    // A revive breaks the chain: the run of clears did not continue through it.
-    streak: 0,
-    over: false,
-  };
-  next.over = isGameOver(next);
-  return next;
+/** A hand with at least `wanted` pieces that fit, or null if none was drawn. */
+function dealAtLeast(rng: number, board: Board, wanted: number) {
+  let draw = dealHand(rng, board, false);
+  for (let attempt = 0; attempt < REVIVE_DEAL_ATTEMPTS; attempt++) {
+    if (playableCount(draw.hand, board) >= wanted) return draw;
+    draw = dealHand(draw.rng, board, false);
+  }
+  return null;
+}
+
+/**
+ * Clear space and deal three pieces, at least two of which fit.
+ *
+ * Two rows is where it starts, not where it stops: on a board jammed enough
+ * that no draw leaves two playable pieces, another row comes off and it tries
+ * again. An empty board fits everything, so this always finds an answer — the
+ * guarantee is kept by clearing more, never by promising less.
+ *
+ * Deterministic in the state it is given, which is what lets the server replay
+ * a revived game rather than take the client's word for the board it landed on.
+ */
+function revived(state: GameState): GameState | null {
+  for (let rows = REVIVE_ROWS; rows <= SIZE; rows++) {
+    const board = cloneBoard(state.board);
+    board.fill(0, (SIZE - rows) * SIZE, SIZE * SIZE);
+
+    const dealt = dealAtLeast(state.rng, board, REVIVE_MIN_PLAYABLE);
+    if (!dealt) continue;
+
+    const next: GameState = {
+      ...state,
+      board,
+      hand: dealt.hand.slice(),
+      rng: dealt.rng,
+      // A revive breaks the chain: the run of clears did not continue through it.
+      streak: 0,
+      over: false,
+    };
+    next.over = isGameOver(next);
+    if (!next.over) return next;
+  }
+  return null;
 }
 
 export type ActionResult =
@@ -247,8 +288,9 @@ export function applyAction(session: Session, action: GameAction): ActionResult 
       if (!state.over) return { ok: false, reason: 'not-over' };
       if (session.revivesUsed >= MAX_REVIVES) return { ok: false, reason: 'no-revives-left' };
       const next = revived(state);
-      // Clearing two rows on a jammed board can still leave nothing playable.
-      if (next.over) return { ok: false, reason: 'still-over' };
+      // Unreachable in practice — an empty board would fit anything — but a
+      // revive that cannot deliver its promise refuses rather than half-keeps it.
+      if (!next) return { ok: false, reason: 'still-over' };
       return {
         ok: true,
         // The old board is gone, so there is nothing left to undo back to.

@@ -90,7 +90,11 @@ export function GameOver({
           }}
         >
           {reviving ? 'Watching…' : 'Watch an advert to carry on'}
-          <span className="btn-sub">Clears the bottom two rows · {revivesLeft} left</span>
+          {/* It clears at least two rows and sometimes more, so the promise
+              stated here is the one the engine actually guarantees. */}
+          <span className="btn-sub">
+            Clears space · three pieces, two will fit · {revivesLeft} left
+          </span>
         </button>
       )}
 

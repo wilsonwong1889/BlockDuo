@@ -1,37 +1,37 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 /**
- * 1.month.day.build — the build number counting the day's commits, so two
- * versions shipped on the same day are told apart by the work between them.
+ * 1.month.day.build, read from version.json at the repo root.
+ *
+ * The file is the source of truth rather than the build machine, because the
+ * deploy builds from a shallow clone: counting the day's commits there sees one
+ * commit and stamped every deploy .1, whichever update it really was. It also
+ * makes the version a property of the commit — rebuilding the same commit
+ * tomorrow produces the same version instead of a new one.
  *
  * Separating month and day with a dot is not cosmetic: the old `1.${month}${day}`
  * gave January 12th and November 2nd the same 1.112.
  */
-function buildNumber(now: Date): number {
-  // Docker builds have no .git — .dockerignore excludes it — so the count can be
-  // handed in instead. Anything without either is still a valid version, at .0.
+function appVersion(): string {
   const handed = process.env.APP_BUILD;
-  if (handed && /^\d+$/.test(handed)) return Number(handed);
 
-  const midnight = new Date(now);
-  midnight.setHours(0, 0, 0, 0);
   try {
-    const count = execFileSync(
-      'git',
-      ['rev-list', '--count', `--since=${midnight.toISOString()}`, 'HEAD'],
-      { cwd: fileURLToPath(new URL('.', import.meta.url)), stdio: ['ignore', 'pipe', 'ignore'] },
-    );
-    return Number(count.toString().trim()) || 0;
+    const raw = readFileSync(new URL('../../version.json', import.meta.url), 'utf8');
+    const { date, build } = JSON.parse(raw) as { date: string; build: number };
+    const [, month, day] = date.split('-');
+    return `1.${Number(month)}.${Number(day)}.${handed ?? build}`;
   } catch {
-    return 0;
+    // No file, or an unreadable one. Fall back to the build machine's date so a
+    // build still carries something truthful about when it was made.
+    const now = new Date();
+    return `1.${now.getMonth() + 1}.${now.getDate()}.${handed ?? 0}`;
   }
 }
 
-const buildDate = new Date();
-const version = `1.${buildDate.getMonth() + 1}.${buildDate.getDate()}.${buildNumber(buildDate)}`;
+const version = appVersion();
 
 export default defineConfig({
   plugins: [react()],

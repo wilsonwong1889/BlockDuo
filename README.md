@@ -143,6 +143,19 @@ is enough to find a game with nothing to look up anywhere else.
 
 ## Deploying
 
+Every update takes the next version number, which lives in `version.json`:
+
+```bash
+npm run bump
+```
+
+`1.month.day.build`, where build counts that day's updates and resets each day.
+It is a committed file rather than a count of the day's commits because the
+deploy builds from a shallow clone — asking git there sees one commit and
+stamped every deploy `.1`, whichever update it really was. Keeping it in the
+repo also makes the version a property of the commit, so rebuilding the same
+commit does not invent a new one.
+
 The site and the room server are **one Worker**. Build the web app first, since
 the Worker uploads `apps/web/dist` as its static assets:
 

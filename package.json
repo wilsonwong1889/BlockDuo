@@ -8,6 +8,7 @@
     "apps/*"
   ],
   "scripts": {
+    "bump": "node scripts/bump-version.mjs",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "dev": "npm run dev --workspace=@blokduo/web",

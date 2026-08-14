@@ -56,9 +56,17 @@ function Row({
   onPlayer?: (friendCode: string) => void;
 }) {
   const medal = medalOf(entry.rank);
-  const className = `leader-row${entry.isYou ? ' you' : ''}${medal ? ` ${medal}` : ''}`;
-  const body = (
-    <>
+  // A Duo row is a pair and has no single profile to open, so it gets no
+  // button — one that looks tappable and does nothing is worse than none.
+  const code = entry.friendCodes?.length === 1 ? entry.friendCodes[0] : null;
+  const openable = code && onPlayer;
+
+  return (
+    <div
+      className={`leader-row${entry.isYou ? ' you' : ''}${medal ? ` ${medal}` : ''}${
+        openable ? ' openable' : ''
+      }`}
+    >
       <span
         className={`leader-rank${medal ? ` medal ${medal}` : ''}`}
         aria-label={medal ? `${PLACES[entry.rank - 1]}, ${medal}` : `Rank ${entry.rank}`}
@@ -71,23 +79,19 @@ function Row({
       </span>
       <span className="leader-pieces">{entry.moveCount} pieces</span>
       <strong className="leader-score">{entry.score.toLocaleString()}</strong>
-    </>
-  );
-
-  // A Duo row is a pair and has no single profile to open, so only solo rows
-  // become buttons — a row that looks tappable and does nothing is worse than
-  // one that plainly is not.
-  const code = entry.friendCodes?.length === 1 ? entry.friendCodes[0] : null;
-  if (!code || !onPlayer) return <div className={className}>{body}</div>;
-
-  return (
-    <button
-      type="button"
-      className={`${className} tappable`}
-      onClick={() => onPlayer(code)}
-      aria-label={`View ${entry.name}'s profile`}
-    >
-      {body}
-    </button>
+      {openable && (
+        // "View" rather than "View profile": fifty rows of the longer label
+        // crowds out the score on a phone. The full wording is in the accessible
+        // name, which is what a screen reader announces.
+        <button
+          type="button"
+          className="view-profile"
+          onClick={() => onPlayer(code)}
+          aria-label={`View ${entry.name}'s profile`}
+        >
+          View
+        </button>
+      )}
+    </div>
   );
 }

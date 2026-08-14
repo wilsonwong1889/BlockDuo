@@ -165,13 +165,17 @@ export function SocialScreen({ onHome, onPlayer }: Props) {
           <div className="friend-list">
             {progress.profile.friends.map((friend) => (
               <div className="friend-row" key={friend.friendCode}>
-                <button
-                  type="button"
-                  className="friend-open"
-                  onClick={() => onPlayer(friend.friendCode)}
-                >
+                <span className="friend-identity">
                   <strong>{friend.name}</strong>
                   <small>{friend.friendCode}</small>
+                </span>
+                <button
+                  type="button"
+                  className="view-profile"
+                  onClick={() => onPlayer(friend.friendCode)}
+                  aria-label={`View ${friend.name}'s profile`}
+                >
+                  View profile
                 </button>
                 <button
                   className="link-btn danger-link"

@@ -1188,15 +1188,22 @@ button {
 .friend-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 0.6rem;
   padding-top: 0.55rem;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
 }
 
-.friend-row > span {
+.friend-identity {
   display: flex;
+  flex: 1;
   flex-direction: column;
+  min-width: 0;
   font-size: 0.82rem;
+}
+
+.friend-identity small {
+  color: var(--muted);
+  font-size: 0.65rem;
 }
 
 .friend-row small {
@@ -1388,40 +1395,30 @@ button {
   font-size: 0.65rem;
 }
 
-/* A leaderboard row that opens a profile is a button, so it has to be reset
-   back to looking like the row it replaced. */
-.leader-row.tappable {
-  width: 100%;
+/* The row keeps its own grid; the button is one more column on the end. */
+.leader-row.openable {
+  grid-template-columns: 2rem minmax(0, 1fr) auto auto auto;
+}
+
+.view-profile {
+  padding: 0.3rem 0.55rem;
   border: 0;
-  font: inherit;
-  color: inherit;
-  text-align: left;
-  transition: transform 0.12s ease, filter 0.12s ease;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--text);
+  font-size: 0.63rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  transition: background 0.15s ease, transform 0.12s ease;
 }
 
-.leader-row.tappable:hover {
-  filter: brightness(1.15);
+.view-profile:hover {
+  background: rgba(110, 231, 255, 0.22);
 }
 
-.leader-row.tappable:active {
-  transform: scale(0.99);
-}
-
-.friend-open {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 0.1rem;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  text-align: left;
-}
-
-.friend-open small {
-  color: var(--muted);
-  font-size: 0.65rem;
+.view-profile:active {
+  transform: scale(0.94);
 }
 
 .join-peek {

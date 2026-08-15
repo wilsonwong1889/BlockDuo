@@ -23,6 +23,13 @@
   // Same origin also means the web client needs no configuration to find the
   // room server — only the native build, which is served from a bundle and has
   // no origin to be relative to, needs VITE_SERVER_URL.
+  // Kept in step with the root config, which is what Cloudflare Builds deploys
+  // from — a manual deploy out of this workspace should not quietly drop the
+  // custom domains that a pushed deploy attaches.
+  "routes": [
+    { "pattern": "blokduo.ca", "custom_domain": true },
+    { "pattern": "www.blokduo.ca", "custom_domain": true }
+  ],
   "assets": {
     "directory": "../web/dist"
   },

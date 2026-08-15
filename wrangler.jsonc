@@ -11,18 +11,14 @@
     "enabled": true
   },
 
-  // The custom domain, once blokduo.ca is a zone on Cloudflare.
-  //
-  // Left commented on purpose: wrangler fails the deploy if it is asked to
-  // attach a route for a zone the account does not hold, and this repository
-  // deploys on push — so uncommenting before the nameservers have moved would
-  // break deploys rather than add a domain. Attach it in the dashboard first
-  // (which checks the zone exists), or move the nameservers and uncomment.
-  //
-  // "routes": [
-  //   { "pattern": "blokduo.ca", "custom_domain": true },
-  //   { "pattern": "www.blokduo.ca", "custom_domain": true }
-  // ],
+  // The custom domain. blokduo.ca is a zone on this account, so wrangler can
+  // attach the route — that check is about zone ownership, not about whether
+  // the nameservers have finished moving, so this is safe to deploy while the
+  // zone is still pending.
+  "routes": [
+    { "pattern": "blokduo.ca", "custom_domain": true },
+    { "pattern": "www.blokduo.ca", "custom_domain": true }
+  ],
   "assets": {
     "directory": "apps/web/dist"
   },

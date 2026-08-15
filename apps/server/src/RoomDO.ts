@@ -32,6 +32,8 @@ export interface Env {
   RECONNECT_GRACE_MS?: string;
   /** Test-only compatibility for protocol tests that exercise raw client IDs. */
   ALLOW_LEGACY_CLIENTS?: string;
+  /** Set with `wrangler secret put ADMIN_TOKEN`; without it, metrics stay shut. */
+  ADMIN_TOKEN?: string;
 }
 
 interface SeatState extends PlayerView {

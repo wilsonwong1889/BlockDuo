@@ -825,6 +825,40 @@ describe('limits and reports', () => {
   });
 });
 
+describe('metrics', () => {
+  const metrics = (token: string, days = 14) =>
+    SELF.fetch(`${ORIGIN}/api/admin/metrics?token=${token}&days=${days}`);
+
+  it('stays shut when no secret is configured', async () => {
+    // The binding is not set in tests, which is the same as not set in
+    // production before anyone remembers to set it.
+    const open = await metrics('anything');
+    expect(open.status).toBe(404);
+    const empty = await metrics('');
+    expect(empty.status).toBe(404);
+  });
+
+  it('counts what the server did, not what a client claimed', async () => {
+    const stub = env.PROGRESS.get(env.PROGRESS.idFromName('global'));
+
+    const before = await runInDurableObject(stub, (instance) => instance.metrics(2));
+    const today = new Date().toISOString().slice(0, 10);
+    const countFor = (rows: Array<Record<string, number | string>>, name: string) =>
+      Number(rows.find((row) => row.day === today)?.[name] ?? 0);
+    if (!before.ok) throw new Error('metrics unavailable');
+    const playersBefore = countFor(before.value, 'player.created');
+
+    await createPlayer(`Counted ${crypto.randomUUID().slice(0, 8)}`);
+
+    const after = await runInDurableObject(stub, (instance) => instance.metrics(2));
+    if (!after.ok) throw new Error('metrics unavailable');
+    expect(countFor(after.value, 'player.created')).toBe(playersBefore + 1);
+    // A day, a name and a number — nothing that identifies anybody.
+    const row = after.value.find((entry) => entry.day === today)!;
+    expect(Object.keys(row).every((key) => key === 'day' || /^[a-z.]+$/.test(key))).toBe(true);
+  });
+});
+
 describe('display names', () => {
   it('refuses a name nobody should have to see, and keeps the old one', async () => {
     const player = await createPlayer(`Polite ${crypto.randomUUID().slice(0, 8)}`);

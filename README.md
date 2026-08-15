@@ -178,6 +178,20 @@ To play a live duo game against a stand-in partner:
 BLOKDUO_ORIGIN=https://blokduo.wilsonwong1889.workers.dev node apps/server/scripts/partner-bot.ts ROOMCODE
 ```
 
+### Seeing how it is going
+
+Daily counts of what the server did — players created, games claimed by mode,
+rooms opened, wheel spins — are kept for 90 days and read behind a secret:
+
+```bash
+npx wrangler secret put ADMIN_TOKEN --config apps/server/wrangler.jsonc
+curl "https://your-worker.workers.dev/api/admin/metrics?token=SECRET&days=14"
+```
+
+Without the secret set the endpoint answers 404, because a metrics endpoint
+that opens itself when nobody configured it is the wrong default. Nothing in
+there identifies a player: a day, a name and a number.
+
 ## The app
 
 ```bash

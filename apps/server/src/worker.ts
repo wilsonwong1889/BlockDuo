@@ -153,6 +153,20 @@ export default {
       return new Response(null, { status: 204, headers: CORS });
     }
 
+    /**
+     * Aggregate daily counts, for you rather than for players.
+     *
+     * Behind a secret so business numbers are not simply public, and refused
+     * outright when no secret is configured — a metrics endpoint that opens
+     * itself because nobody set a variable is the wrong default.
+     */
+    if (url.pathname === '/api/admin/metrics' && request.method === 'GET') {
+      const expected = env.ADMIN_TOKEN;
+      const given = url.searchParams.get('token') ?? '';
+      if (!expected || given !== expected) return json({ error: 'Not found' }, 404);
+      return resultJson(await progressStub(env).metrics(Number(url.searchParams.get('days') ?? 14)));
+    }
+
     // POST /api/room — mint a room and return its code.
     if (url.pathname === '/api/room' && request.method === 'POST') {
       // A room is a Durable Object, so minting one is not free either.

@@ -133,6 +133,9 @@ const ALL_TIME_BACKFILL_KEY = 'migration:alltime:v1';
 /** Set once profiles have taken their best score from the boards. */
 const STATS_BACKFILL_KEY = 'migration:stats:v1';
 
+/** Daily counts are kept this long, then dropped. */
+const METRIC_RETENTION_DAYS = 90;
+
 /** Durable Object storage takes at most 128 keys in one put. */
 const MAX_PUT_KEYS = 100;
 
@@ -215,6 +218,9 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
    * object cannot grow a row for every player it has ever shown.
    */
   private boards = new Map<string, { at: number; records: RankedScore[] }>();
+
+  /** The day whose metric sweep has already run on this object. */
+  private sweptDay = '';
   private codes = new Map<string, string>();
 
   private async sortedBoard(window: string, mode: GameMode): Promise<RankedScore[]> {
@@ -262,7 +268,52 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
 
   /** Asked before a room is minted, because a room is a Durable Object too. */
   async allowRoomCreate(address: string): Promise<boolean> {
-    return this.allowed('room', address);
+    const allowed = this.allowed('room', address);
+    if (allowed) await this.count('room.created');
+    return allowed;
+  }
+
+  /**
+   * One more of something happened today.
+   *
+   * Counted here rather than reported by the browser, so the numbers describe
+   * what the server actually did. Nothing identifies anybody: a day and a name
+   * and a number, which is enough to see whether people are playing and far
+   * less than enough to see who.
+   */
+  private async count(name: string): Promise<void> {
+    const day = utcDayKey();
+    const key = `metric:${day}:${name}`;
+    const current = (await this.ctx.storage.get<number>(key)) ?? 0;
+    await this.ctx.storage.put(key, current + 1);
+
+    // Yesterday's first write is when the old days go, so the sweep happens
+    // once a day rather than on every count.
+    if (this.sweptDay === day) return;
+    this.sweptDay = day;
+    const cutoff = utcDayKey(Date.now() - METRIC_RETENTION_DAYS * 24 * 60 * 60_000);
+    const stale = await this.ctx.storage.list<number>({
+      prefix: 'metric:',
+      end: `metric:${cutoff}`,
+    });
+    if (stale.size) await this.ctx.storage.delete([...stale.keys()]);
+  }
+
+  /** Daily counts, newest day first. Aggregate only. */
+  async metrics(days = 14): Promise<ProgressResult<Array<Record<string, number | string>>>> {
+    const wanted = Math.min(90, Math.max(1, Math.floor(days)));
+    const since = utcDayKey(Date.now() - (wanted - 1) * 24 * 60 * 60_000);
+    const rows = await this.ctx.storage.list<number>({ prefix: 'metric:', start: `metric:${since}` });
+
+    const byDay = new Map<string, Record<string, number | string>>();
+    for (const [key, value] of rows) {
+      const [, day, ...rest] = key.split(':');
+      const name = rest.join(':');
+      const row = byDay.get(day) ?? { day };
+      row[name] = value;
+      byDay.set(day, row);
+    }
+    return ok([...byDay.values()].sort((a, b) => String(b.day).localeCompare(String(a.day))));
   }
 
   private async mutate<T>(operation: () => Promise<T>): Promise<T> {
@@ -318,6 +369,7 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       [codeKey(friendCode)]: clientId,
     });
 
+    await this.count('player.created');
     return ok({ identity: { clientId, token }, profile: await this.view(profile) });
   }
 
@@ -567,6 +619,7 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       profile.updatedAt = Date.now();
       await this.ctx.storage.put(profileKey(profile.clientId), profile);
 
+      await this.count(`spin.${free ? 'free' : byAd ? 'ad' : 'coins'}`);
       return ok({
         gems: segment.gems,
         free,
@@ -689,6 +742,7 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     await this.ctx.storage.put(writes);
     const weeklyBest = ledger.weeklyBest;
 
+    await this.count(ranked ? 'classic.ranked' : 'classic.casual');
     return ok({ awarded: true, reward, weeklyBest, profile: await this.view(profile) });
   }
 
@@ -756,6 +810,7 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
 
     writes[claimKey] = { reward, weeklyBest };
     await this.ctx.storage.put(writes);
+    await this.count(input.ranked ? 'duo.ranked' : 'duo.casual');
     return ok(true);
   }
 

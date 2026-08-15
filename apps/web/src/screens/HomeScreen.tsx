@@ -3,8 +3,9 @@ import { unlockAudio } from '../audio/sfx';
 import { AdSlot } from '../components/AdSlot';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { MovePrompt } from '../components/MovePrompt';
+import { updateAppSettings } from '../preferences';
 import { useProgress } from '../progress/ProgressContext';
-import { loadBest, loadClassicGame } from '../storage';
+import { loadAppSettings, loadBest, loadClassicGame } from '../storage';
 
 interface Props {
   onClassic: () => void;
@@ -28,6 +29,10 @@ export function HomeScreen({
   onWheel,
 }: Props) {
   const [panel, setPanel] = useState<'new-game' | null>(null);
+  // Only the sound flag is read here. Everything else about settings lives on
+  // the profile; this is the one people reach for mid-session, usually because
+  // somebody walked into the room.
+  const [sound, setSound] = useState(() => loadAppSettings().sound);
   const { profile } = useProgress();
 
   // Read once on mount, not on every render: loadClassicGame parses a whole
@@ -42,6 +47,12 @@ export function HomeScreen({
   const { best, game: savedGame, ranked: savedRanked } = initial;
   const hasSavedProgress = !!savedGame && savedGame.state.moveCount > 0;
   const hasRankedProgress = !!savedRanked && savedRanked.state.moveCount > 0;
+
+  const toggleSound = () => {
+    const next = { ...loadAppSettings(), sound: !sound };
+    setSound(next.sound);
+    updateAppSettings(next);
+  };
 
   const startClassic = () => {
     unlockAudio();
@@ -142,10 +153,32 @@ export function HomeScreen({
       <MovePrompt />
 
       {/* Settings live on the profile now, so this row is one thing rather
-          than a list of three competing for the same glance. */}
+          than a list of three competing for the same glance — plus mute, which
+          is a control rather than a destination and does not belong behind two
+          taps. */}
       <div className="home-tools" aria-label="More options">
         <button className="link-btn" onClick={onProfile}>
           Your profile &amp; settings
+        </button>
+        <span aria-hidden>·</span>
+        <button
+          className="sound-toggle"
+          onClick={toggleSound}
+          aria-pressed={sound}
+          aria-label={sound ? 'Mute sound' : 'Unmute sound'}
+          title={sound ? 'Mute' : 'Unmute'}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden focusable="false">
+            <path d="M4 9.5h3.2L12 5.2v13.6L7.2 14.5H4z" />
+            {sound ? (
+              <>
+                <path className="wave" d="M15.4 8.8a4.4 4.4 0 0 1 0 6.4" />
+                <path className="wave" d="M17.9 6.3a7.9 7.9 0 0 1 0 11.4" />
+              </>
+            ) : (
+              <path className="wave" d="M16 9.5l5 5m0-5l-5 5" />
+            )}
+          </svg>
         </button>
       </div>
 

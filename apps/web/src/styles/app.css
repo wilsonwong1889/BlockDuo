@@ -1011,6 +1011,45 @@ button {
   color: #ffe89a;
 }
 
+/* Mute, at the same weight as the link beside it: reachable without being the
+   thing the eye lands on. Stroked rather than filled so it stays legible at
+   the size the tools row runs at. */
+.sound-toggle {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--muted);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.sound-toggle:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sound-toggle svg {
+  width: 1rem;
+  height: 1rem;
+  fill: currentColor;
+}
+
+.sound-toggle .wave {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+/* Muted reads as off rather than as a different icon of equal weight. */
+.sound-toggle[aria-pressed='false'] {
+  opacity: 0.6;
+}
+
 /* What the settings are without opening them, so the row is worth a glance. */
 .settings-summary {
   display: flex;

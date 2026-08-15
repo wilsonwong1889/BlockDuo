@@ -34,6 +34,13 @@ export interface Env {
   ALLOW_LEGACY_CLIENTS?: string;
   /** Set with `wrangler secret put ADMIN_TOKEN`; without it, metrics stay shut. */
   ADMIN_TOKEN?: string;
+  /**
+   * AdSense publisher ID, `pub-` and sixteen digits — the `ca-` prefix belongs
+   * to the client tag, not to ads.txt. Unset means /ads.txt is not served,
+   * which is the right answer until there is an approved account: an ads.txt
+   * naming a publisher who does not own the inventory is worse than none.
+   */
+  ADSENSE_PUB_ID?: string;
 }
 
 interface SeatState extends PlayerView {

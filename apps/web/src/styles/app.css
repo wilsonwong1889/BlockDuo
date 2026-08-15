@@ -911,6 +911,21 @@ button {
   font-size: 0.72rem;
 }
 
+/*
+ * An advert sits below the menu with real space around it, so it reads as
+ * something separate from the game rather than another button. The gap is not
+ * decoration: adverts close enough to controls to be tapped by mistake are
+ * invalid traffic as far as Google is concerned.
+ *
+ * The element only exists when a publisher ID is configured, so this rule
+ * costs an unconfigured build nothing.
+ */
+.ad-slot {
+  width: min(100%, 22rem);
+  margin: 1.75rem auto 0;
+  min-height: 3.5rem;
+}
+
 .settings-list {
   display: flex;
   flex-direction: column;

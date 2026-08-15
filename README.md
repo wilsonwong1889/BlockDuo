@@ -224,6 +224,55 @@ explicitly. Removing it silently breaks every link on the old origin.
 The one origin written down rather than discovered is the native build's
 `VITE_SERVER_URL`.
 
+## Advertising
+
+Two different things, which are easy to confuse because both are Google:
+
+**Rewarded video** — watch an advert, get a reward — is what the strategy
+document is built around, and it is an *app* format. AdMob serves it on Android
+and iOS; AdSense has no rewarded format at all. That seam lives in
+[`src/ads/index.ts`](apps/web/src/ads/index.ts) and is still on its placeholder,
+which resolves as though an advert was watched so the quotas, refusals and
+rewards can be built and tested before a network exists. The wheel already
+spends it: [`ProgressDO`](apps/server/src/ProgressDO.ts) accepts an `ad` spin
+source with a daily cap.
+
+**Display banners** on the website are AdSense, and that is
+[`src/ads/adsense.ts`](apps/web/src/ads/adsense.ts). Nothing loads unless a
+publisher ID is configured, so an unconfigured build carries no third-party
+script at all — and it never runs inside the native shell, where AdSense would
+breach programme policy and AdMob is the right product anyway.
+
+To turn it on, once there is an approved AdSense account:
+
+```bash
+# Build the site with the publisher ID and the unit's slot ID.
+VITE_ADSENSE_CLIENT=ca-pub-0000000000000000 \
+VITE_ADSENSE_SLOT_HOME=0000000000 \
+  npm run build
+
+# Authorise the same publisher to sell the inventory. Note: no `ca-` prefix
+# here — ads.txt takes the `pub-` form, the client tag takes `ca-pub-`.
+npx wrangler secret put ADSENSE_PUB_ID
+```
+
+`/ads.txt` is served by the Worker rather than shipped as a file, so a build
+without an ID returns 404 instead of publishing a placeholder. That file is an
+authorisation record — it tells advert buyers who may sell this site's
+inventory — so a stub left in by accident vouches for the wrong account rather
+than doing nothing.
+
+Placement is a policy matter, not only a design one. Adverts sit on menus and
+result screens, never beside the board: Google treats an advert close enough to
+a control to be tapped mid-drag as invalid traffic, and the strategy document
+rules out forced adverts inside play regardless.
+
+[`/privacy.html`](apps/web/public/privacy.html) is a plain crawlable page, not a
+hash route, because a reviewer and a crawler both need to reach it. It carries
+the advertising-cookie disclosure AdSense requires, and it names
+`privacy@blokduo.ca` — **an address that does not exist yet**; point it
+somewhere with Cloudflare Email Routing before applying, or change it.
+
 ## The app
 
 ```bash

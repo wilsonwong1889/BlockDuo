@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { unlockAudio } from '../audio/sfx';
+import { AdSlot } from '../components/AdSlot';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { SettingsPanel } from '../components/SettingsPanel';
 import { updateAppSettings } from '../preferences';
@@ -145,7 +146,17 @@ export function HomeScreen({
         <button className="link-btn" onClick={() => setPanel('settings')}>
           Settings
         </button>
+        <span aria-hidden>·</span>
+        {/* Reachable from the game itself, which is what an advert network and
+            a player both expect — and a plain link, so a crawler sees it. */}
+        <a className="link-btn" href="/privacy.html">
+          Privacy
+        </a>
       </div>
+
+      {/* Menus and result screens only. An advert next to the board would be
+          tapped by accident mid-drag, which Google counts as invalid traffic. */}
+      <AdSlot slot={import.meta.env.VITE_ADSENSE_SLOT_HOME ?? ''} />
 
       <details className="how-to">
         <summary>How to play</summary>

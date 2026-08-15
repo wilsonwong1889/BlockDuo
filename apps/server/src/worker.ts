@@ -53,11 +53,44 @@ function credentialsOf(body: Record<string, unknown>): ProgressCredentials {
   };
 }
 
+/** Google's certification authority ID, fixed for every AdSense ads.txt. */
+const GOOGLE_TAG_ID = 'f08c47fec0942fa0';
+
+/** What Google issues: `pub-` and sixteen digits. */
+const PUB_ID_PATTERN = /^pub-\d{16}$/;
+
+/**
+ * The ads.txt body for a publisher ID, or null when there is not a valid one.
+ *
+ * Exported for the tests. A malformed ID has to mean no file rather than a
+ * file naming a malformed publisher, because this is the record advert buyers
+ * check to decide whether inventory sold as ours really is.
+ */
+export function adsTxtBody(pubId: string | undefined | null): string | null {
+  const value = (pubId ?? '').trim();
+  if (!PUB_ID_PATTERN.test(value)) return null;
+  return `google.com, ${value}, DIRECT, ${GOOGLE_TAG_ID}\n`;
+}
+
+function adsTxt(env: Env): Response {
+  const body = adsTxtBody(env.ADSENSE_PUB_ID);
+  if (!body) return new Response('Not found', { status: 404 });
+  return new Response(body, {
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'max-age=3600' },
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
+
+    // Served from here rather than from the assets directory so that a build
+    // without a publisher ID cannot ship a file naming one. Google reads this
+    // to confirm who is allowed to sell the site's inventory, so a placeholder
+    // left in by accident is an authorisation claim, not a harmless stub.
+    if (url.pathname === '/ads.txt') return adsTxt(env);
 
     // Progression endpoints all use POST so the bearer token never appears in
     // query strings, browser history, CDN cache keys or access logs.

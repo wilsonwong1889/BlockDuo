@@ -8,9 +8,11 @@ import {
   isSupportedGameSeed,
   POWER_COSTS,
   replayActions,
-  wheelSegment,
+  nextUnmarkedWedge,
+  wheelWedgeAt,
   WHEEL_COST_COINS,
-  WHEEL_TOTAL_WEIGHT,
+  WHEEL_WEDGES,
+  WHEEL_WEDGE_TOTAL,
   MAX_AD_SPINS_PER_DAY,
   utcDayKey,
   weekWindow,
@@ -61,6 +63,13 @@ interface StoredProfile {
   /** The UTC day the advert spins below were counted against. */
   adSpinDay?: string;
   adSpinsUsed?: number;
+  /**
+   * Wedges struck off the wheel, in `WHEEL_WEDGES` order.
+   *
+   * Absent on profiles from before the wheel remembered anything, which is the
+   * same as a full board.
+   */
+  markedWedges?: number[];
   gamesPlayed: number;
   friendIds: string[];
   createdAt: number;
@@ -684,7 +693,23 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
         return fail<WheelResult>(400, 'Not enough coins for a spin');
       }
 
-      const segment = wheelSegment(randomRoll(WHEEL_TOTAL_WEIGHT));
+      // Where the roll fell, then where it actually pays: a wedge already
+      // struck off slides the result right to the next one still standing,
+      // which is what makes the rare prize get likelier every spin.
+      const marked = profile.markedWedges ?? [];
+      const landedOn = nextUnmarkedWedge(wheelWedgeAt(randomRoll(WHEEL_WEDGE_TOTAL)), marked);
+      // Nothing left at all should be impossible — the board refills the moment
+      // it empties below — but a spin that cannot pay is worse than one that
+      // refills first, so treat it as a fresh board rather than an error.
+      const wedgeIndex = landedOn === -1 ? wheelWedgeAt(randomRoll(WHEEL_WEDGE_TOTAL)) : landedOn;
+      const wedge = WHEEL_WEDGES[wedgeIndex];
+
+      const struck = landedOn === -1 ? [wedgeIndex] : [...marked, wedgeIndex];
+      // Refill the moment the last wedge goes, so a player is never left with
+      // a wheel that has nowhere to land and a button that does nothing.
+      const refilled = struck.length >= WHEEL_WEDGES.length;
+      profile.markedWedges = refilled ? [] : struck;
+
       if (free) {
         profile.freeSpinDay = today;
       } else if (byAd) {
@@ -694,15 +719,18 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       } else {
         profile.coins -= WHEEL_COST_COINS;
       }
-      profile.gems = (profile.gems ?? 0) + segment.gems;
+      profile.gems = (profile.gems ?? 0) + wedge.gems;
       profile.updatedAt = Date.now();
       await this.ctx.storage.put(profileKey(profile.clientId), profile);
 
       await this.count(`spin.${free ? 'free' : byAd ? 'ad' : 'coins'}`);
+      if (wedge.rare) await this.count('spin.rare');
       return ok({
-        gems: segment.gems,
+        gems: wedge.gems,
         free,
         source: free ? 'free' : byAd ? 'ad' : 'coins',
+        wedge: wedgeIndex,
+        refilled,
         profile: await this.view(profile),
       });
     });
@@ -714,6 +742,26 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
    * A game can be abandoned and never claimed, so charging at the end would
    * hand out free powers to anyone who closed the tab.
    */
+  /**
+   * Put every wedge back.
+   *
+   * The rare prize is struck off like any other once it is won, so without
+   * this a player who hit it could never hit it again. Resetting is always the
+   * player's own choice: it trades the odds they have built up for the chance
+   * to build them again, and only they can judge which they want.
+   */
+  async resetWheel(credentials: ProgressCredentials): Promise<ProgressResult<ProgressProfile>> {
+    return this.mutate(async () => {
+      const profile = await this.authenticateRecord(credentials);
+      if (!profile) return fail<ProgressProfile>(401, 'Your player session is no longer valid');
+      profile.markedWedges = [];
+      profile.updatedAt = Date.now();
+      await this.ctx.storage.put(profileKey(profile.clientId), profile);
+      await this.count('spin.reset');
+      return ok(await this.view(profile));
+    });
+  }
+
   async spendGems(
     credentials: ProgressCredentials,
     power: PowerName,
@@ -993,6 +1041,7 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       gems: profile.gems ?? 0,
       freeSpinAvailable: profile.freeSpinDay !== utcDayKey(),
       adSpinsLeft: adSpinsLeftFor(profile),
+      markedWedges: profile.markedWedges ?? [],
       gamesPlayed: profile.gamesPlayed,
       friends: friends
         .filter((friend): friend is StoredProfile => !!friend)

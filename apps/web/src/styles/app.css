@@ -2151,6 +2151,13 @@ html.high-contrast .app-version {
   pointer-events: none;
 }
 
+/* A wedge already paid out. Dimmed rather than removed, so the board reads as
+   one being emptied rather than a wheel that changed shape. */
+.wheel-label.struck {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.5rem;
+}
+
 /* The rare prize gets a wedge a few degrees wide, so its number has to fit in
    one. Small is also the point: it should look like the long shot it is. */
 .wheel-label.rare {
@@ -2232,6 +2239,20 @@ html.high-contrast .app-version {
     opacity: 0;
     transform: translateY(-3.4rem) scale(0.95);
   }
+}
+
+/* A prize with nothing left on the board. */
+.odds-row.spent {
+  opacity: 0.4;
+}
+
+.odds-row.spent .odds-bar span {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* The number the whole mechanic is about, so it gets its own line. */
+.rare-odds strong {
+  color: #ffe89a;
 }
 
 .odds-swatch {

@@ -30,6 +30,7 @@ import {
   announceProgressChange,
   claimClassic as claimClassicRequest,
   spendGems as spendGemsRequest,
+  resetWheel as resetWheelRequest,
   spinWheel as spinWheelRequest,
   fetchLeaderboard,
   fetchProfile,
@@ -51,6 +52,8 @@ interface ProgressContextValue {
   /** Pay for a power. Resolves false when the gems were not there. */
   spendGems: (power: PowerName) => Promise<boolean>;
   spinWheel: (watchedAd?: boolean) => Promise<WheelResult>;
+  /** Put every wedge back, at the cost of the odds built up so far. */
+  resetWheel: () => Promise<void>;
 }
 
 const ProgressContext = createContext<ProgressContextValue | null>(null);
@@ -189,6 +192,10 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const resetWheel = useCallback(async () => {
+    setProfile(await resetWheelRequest());
+  }, []);
+
   const spinWheel = useCallback(async (watchedAd = false) => {
     const result = await spinWheelRequest(watchedAd);
     setProfile(result.profile);
@@ -208,8 +215,22 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
       claimClassic,
       spendGems,
       spinWheel,
+      resetWheel,
     }),
-    [profile, loading, error, refresh, rename, addFriend, removeFriend, leaderboard, claimClassic, spendGems, spinWheel],
+    [
+      profile,
+      loading,
+      error,
+      refresh,
+      rename,
+      addFriend,
+      removeFriend,
+      leaderboard,
+      claimClassic,
+      spendGems,
+      spinWheel,
+      resetWheel,
+    ],
   );
 
   return <ProgressContext.Provider value={value}>{children}</ProgressContext.Provider>;

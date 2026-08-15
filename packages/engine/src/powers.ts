@@ -117,6 +117,117 @@ export function wheelSegment(roll: number): (typeof WHEEL_SEGMENTS)[number] {
   return WHEEL_SEGMENTS[WHEEL_SEGMENTS.length - 1];
 }
 
+/** How many wedges each common prize is drawn as. */
+export const WHEEL_REPEATS = 5;
+
+/** A prize rarer than this share is drawn as a single wedge. */
+const RARE_SHARE = 0.05;
+
+export interface WheelWedge {
+  gems: number;
+  /** Out of `WHEEL_WEDGE_TOTAL`. */
+  weight: number;
+  /** Degrees clockwise from the top, for whatever draws it. */
+  start: number;
+  size: number;
+  centre: number;
+  /** True for the single sliver, which is drawn and labelled differently. */
+  rare: boolean;
+}
+
+/**
+ * The wheel as it is actually drawn and played: many small wedges, not five
+ * fat ones.
+ *
+ * This lives here rather than in the app because the server now decides which
+ * *wedge* a spin lands on, not merely which prize — a marked wedge slides the
+ * result along — so both ends have to agree on the layout exactly. Two copies
+ * of this list that drifted would put the pointer on a different wedge than
+ * the one that was paid out.
+ *
+ * The odds are unchanged: a prize split into five wedges of a fifth the weight
+ * is the same prize at the same odds, and the rare one keeps its whole weight
+ * in a single sliver.
+ */
+export const WHEEL_WEDGES: WheelWedge[] = (() => {
+  const rareGems =
+    WHEEL_SEGMENTS.find((s) => s.weight / WHEEL_TOTAL_WEIGHT < RARE_SHARE)?.gems ?? null;
+  const common = WHEEL_SEGMENTS.filter((s) => s.gems !== rareGems);
+
+  // Rotating the order each pass keeps a prize from ever sitting beside
+  // itself, which would read as one fat wedge and undo the splitting.
+  const order: Array<{ gems: number; weight: number; rare: boolean }> = [];
+  for (let pass = 0; pass < WHEEL_REPEATS; pass++) {
+    for (let i = 0; i < common.length; i++) {
+      const part = common[(i + pass) % common.length];
+      order.push({ gems: part.gems, weight: part.weight, rare: false });
+    }
+  }
+  const rare = WHEEL_SEGMENTS.find((s) => s.gems === rareGems);
+  if (rare) {
+    // A third of the way round, so it is nowhere near where the pointer rests.
+    order.splice(Math.floor(order.length / 3), 0, {
+      gems: rare.gems,
+      // Its whole weight in one wedge, where a common prize's weight is split
+      // across five — which is what keeps every wedge an integer of the same
+      // scaled total.
+      weight: rare.weight * WHEEL_REPEATS,
+      rare: true,
+    });
+  }
+
+  const total = order.reduce((sum, part) => sum + part.weight, 0);
+  let acc = 0;
+  return order.map((part) => {
+    const size = (part.weight / total) * 360;
+    const start = acc;
+    acc += size;
+    return { ...part, start, size, centre: start + size / 2 };
+  });
+})();
+
+export const WHEEL_WEDGE_TOTAL = WHEEL_WEDGES.reduce((sum, w) => sum + w.weight, 0);
+
+/**
+ * Which wedge a roll lands on. `roll` is 0..WHEEL_WEDGE_TOTAL-1.
+ *
+ * Pure and separate from where the randomness comes from, so the payout table
+ * can be tested exactly rather than sampled and hoped over.
+ */
+export function wheelWedgeAt(roll: number): number {
+  const bounded = Math.min(
+    WHEEL_WEDGE_TOTAL - 1,
+    Math.max(0, Math.floor(Number.isFinite(roll) ? roll : 0)),
+  );
+  let seen = 0;
+  for (let i = 0; i < WHEEL_WEDGES.length; i++) {
+    seen += WHEEL_WEDGES[i].weight;
+    if (bounded < seen) return i;
+  }
+  return WHEEL_WEDGES.length - 1;
+}
+
+/**
+ * The wedge a spin actually pays, given what has already been struck off.
+ *
+ * Landing on a struck wedge slides right to the next one still standing, which
+ * is what makes the odds climb: every spin removes somewhere for the next one
+ * to land, and the sliver that is left is the rare prize. Wraps, so the search
+ * cannot fall off the end.
+ *
+ * Returns -1 only if nothing is left at all, which the caller treats as a
+ * board that has been cleared and should refill.
+ */
+export function nextUnmarkedWedge(from: number, marked: readonly number[]): number {
+  const struck = new Set(marked);
+  if (struck.size >= WHEEL_WEDGES.length) return -1;
+  for (let step = 0; step < WHEEL_WEDGES.length; step++) {
+    const index = (from + step) % WHEEL_WEDGES.length;
+    if (!struck.has(index)) return index;
+  }
+  return -1;
+}
+
 /**
  * A game in progress, with just enough behind it to undo.
  *

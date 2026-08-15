@@ -144,6 +144,10 @@ export function spinWheel(watchedAd = false): Promise<WheelResult> {
   return authenticated('/api/progress/wheel', { watchedAd });
 }
 
+export function resetWheel(): Promise<ProgressProfile> {
+  return authenticated('/api/progress/wheel/reset');
+}
+
 export function spendGems(power: PowerName): Promise<ProgressProfile> {
   return authenticated('/api/progress/gems/spend', { power });
 }

@@ -3,7 +3,7 @@ import {
   MAX_AD_SPINS_PER_DAY,
   WHEEL_COST_COINS,
   WHEEL_SEGMENTS,
-  WHEEL_TOTAL_WEIGHT,
+  WHEEL_WEDGES,
   POWER_COSTS,
 } from '@blokduo/engine';
 import { showRewardedAd } from '../ads';
@@ -28,95 +28,47 @@ const SEGMENT_COLOURS = [
   'rgba(244, 63, 94, 0.95)',
 ];
 
-/** How many wedges each common prize is drawn as. */
-const REPEATS = 5;
+/** Prize value to colour, so a prize's wedges all look alike. */
+const COLOUR_OF = new Map<number, string>(
+  WHEEL_SEGMENTS.map((segment, index) => [
+    segment.gems,
+    SEGMENT_COLOURS[index % SEGMENT_COLOURS.length],
+  ]),
+);
 
-/**
- * A prize rarer than this is drawn once.
- *
- * Splitting a one-percent slice five ways would give five wedges under a
- * degree wide, which is not a wheel, it is a hairline. It stays a single
- * sliver, which is also the honest picture of its odds.
- */
-const RARE_SHARE = 0.05;
+/** The prize drawn as a single sliver, whose odds the striking-off chases. */
+const RARE_GEMS = WHEEL_WEDGES.find((w) => w.rare)?.gems ?? null;
 
-interface Wedge {
-  gems: number;
-  /** Degrees clockwise from the top. */
-  start: number;
-  size: number;
-  centre: number;
-  colour: string;
-  rare: boolean;
+/** A struck wedge, drawn as spent rather than removed. */
+const STRUCK_COLOUR = 'rgba(255, 255, 255, 0.07)';
+
+function gradientFor(marked: readonly number[]): string {
+  const struck = new Set(marked);
+  const stops = WHEEL_WEDGES.map((wedge, index) => {
+    const colour = struck.has(index)
+      ? STRUCK_COLOUR
+      : (COLOUR_OF.get(wedge.gems) ?? SEGMENT_COLOURS[0]);
+    return `${colour} ${wedge.start}deg ${wedge.start + wedge.size}deg`;
+  });
+  return `conic-gradient(from 0deg, ${stops.join(', ')})`;
 }
 
-/** The one prize drawn as a single wedge, or null if none is rare enough. */
-const RARE_GEMS =
-  WHEEL_SEGMENTS.find((s) => s.weight / WHEEL_TOTAL_WEIGHT < RARE_SHARE)?.gems ?? null;
-
-/**
- * The prizes as wedges, sized by their real odds.
- *
- * Each common prize is drawn as several small wedges rather than one quarter
- * of the wheel, which is what a wheel actually looks like and gives it
- * something to sweep past. The odds are untouched: five wedges at a fifth of
- * the weight is the same twenty-five percent, and the rare one keeps its
- * single sliver.
- *
- * Laid out by rotating the order each pass, so the same prize never sits next
- * to itself — two adjacent wedges of one colour read as a single fat one and
- * undo the point of splitting them.
- */
-const WEDGES: Wedge[] = (() => {
-  const common = WHEEL_SEGMENTS.map((segment, index) => ({
+/** What each prize is worth now, given what is left on the board. */
+function liveOdds(marked: readonly number[]): Array<{ gems: number; share: number }> {
+  const struck = new Set(marked);
+  const live = WHEEL_WEDGES.filter((_, index) => !struck.has(index));
+  const total = live.reduce((sum, wedge) => sum + wedge.weight, 0);
+  return WHEEL_SEGMENTS.map((segment) => ({
     gems: segment.gems,
-    weight: segment.weight,
-    colour: SEGMENT_COLOURS[index % SEGMENT_COLOURS.length],
-  })).filter((part) => part.gems !== RARE_GEMS);
+    share: total
+      ? live.filter((w) => w.gems === segment.gems).reduce((sum, w) => sum + w.weight, 0) / total
+      : 0,
+  }));
+}
 
-  const order: typeof common = [];
-  for (let pass = 0; pass < REPEATS; pass++) {
-    for (let i = 0; i < common.length; i++) {
-      order.push(common[(i + pass) % common.length]);
-    }
-  }
-
-  const rareIndex = WHEEL_SEGMENTS.findIndex((s) => s.gems === RARE_GEMS);
-  if (RARE_GEMS !== null) {
-    order.splice(Math.floor(order.length / 3), 0, {
-      gems: RARE_GEMS,
-      weight: WHEEL_SEGMENTS[rareIndex].weight,
-      colour: SEGMENT_COLOURS[rareIndex % SEGMENT_COLOURS.length],
-    });
-  }
-
-  let acc = 0;
-  return order.map((part) => {
-    const rare = part.gems === RARE_GEMS;
-    const size = ((part.weight / (rare ? 1 : REPEATS)) / WHEEL_TOTAL_WEIGHT) * 360;
-    const startAt = acc;
-    acc += size;
-    return {
-      gems: part.gems,
-      start: startAt,
-      size,
-      centre: startAt + size / 2,
-      colour: part.colour,
-      rare,
-    };
-  });
-})();
-
-const WHEEL_GRADIENT = `conic-gradient(from 0deg, ${WEDGES.map(
-  (w) => `${w.colour} ${w.start}deg ${w.start + w.size}deg`,
-).join(', ')})`;
-
-/** Where the wheel must stop for `gems` to sit under the pointer. */
-function restingAngle(from: number, gems: number): number {
-  // Any of the prize's wedges will do, and picking between them means two
-  // identical wins do not stop in the same place.
-  const candidates = WEDGES.filter((w) => w.gems === gems);
-  const wedge = candidates[Math.floor(Math.random() * candidates.length)] ?? WEDGES[0];
+/** Where the wheel must stop for `wedge` to sit under the pointer. */
+function restingAngle(from: number, wedgeIndex: number): number {
+  const wedge = WHEEL_WEDGES[wedgeIndex] ?? WHEEL_WEDGES[0];
   const current = ((from % 360) + 360) % 360;
   // The pointer is at the top, so the wedge's centre has to come round to 0.
   const wanted = (360 - wedge.centre) % 360;
@@ -129,12 +81,15 @@ const prefersStillness = () =>
   document.documentElement.classList.contains('reduce-motion');
 
 export function WheelScreen({ onHome }: Props) {
-  const { profile, spinWheel } = useProgress();
+  const { profile, spinWheel, resetWheel } = useProgress();
   const [spinning, setSpinning] = useState(false);
   const [won, setWon] = useState<number | null>(null);
   const [wasFree, setWasFree] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [angle, setAngle] = useState(0);
+  const [shownMarks, setShownMarks] = useState<number[]>([]);
+  const [resetting, setResetting] = useState(false);
+  const [justRefilled, setJustRefilled] = useState(false);
   // Read during a spin, so it does not go stale behind the state update.
   const angleRef = useRef(0);
 
@@ -144,6 +99,13 @@ export function WheelScreen({ onHome }: Props) {
   const affordable = freeSpin || coins >= WHEEL_COST_COINS;
 
   const adSpinsLeft = profile?.adSpinsLeft ?? 0;
+  const marked = profile?.markedWedges ?? [];
+  // Held back while the wheel is still turning: striking the wedge off the
+  // moment the server answered would show the result before it landed.
+  const shown = spinning ? shownMarks : marked;
+  const odds = liveOdds(shown);
+  const rareShare = odds.find((row) => row.gems === RARE_GEMS)?.share ?? 0;
+  const left = WHEEL_WEDGES.length - shown.length;
 
   const spin = async (viaAd = false) => {
     if (spinning) return;
@@ -161,12 +123,16 @@ export function WheelScreen({ onHome }: Props) {
     setSpinning(true);
     setWon(null);
     setError(null);
+    const before = profile?.markedWedges ?? [];
     try {
       const result = await spinWheel(viaAd);
       setWasFree(result.free);
+      // Freeze the board as it was, so the wedge being aimed at is still there
+      // to aim at while the wheel turns.
+      setShownMarks(before);
 
       const still = prefersStillness();
-      const next = still ? angleRef.current : restingAngle(angleRef.current, result.gems);
+      const next = still ? angleRef.current : restingAngle(angleRef.current, result.wedge);
       angleRef.current = next;
       setAngle(next);
 
@@ -177,6 +143,7 @@ export function WheelScreen({ onHome }: Props) {
         () => {
           setWon(result.gems);
           setSpinning(false);
+          if (result.refilled) setJustRefilled(true);
         },
         still ? 0 : SPIN_MS,
       );
@@ -203,7 +170,7 @@ export function WheelScreen({ onHome }: Props) {
             className="wheel"
             aria-hidden
             style={{
-              background: WHEEL_GRADIENT,
+              background: gradientFor(shown),
               transform: `rotate(${angle}deg)`,
               transition: spinning
                 ? // Off the mark quickly, then a long run-down: the last
@@ -214,15 +181,18 @@ export function WheelScreen({ onHome }: Props) {
                 : 'none',
             }}
           >
-            {WEDGES.map((wedge, index) => (
-              <span
-                className={`wheel-label${wedge.rare ? ' rare' : ''}`}
-                key={`${wedge.gems}-${index}`}
-                style={{ transform: `rotate(${wedge.centre}deg) translateY(-3.5rem)` }}
-              >
-                {wedge.gems}
-              </span>
-            ))}
+            {WHEEL_WEDGES.map((wedge, index) => {
+              const struck = shown.includes(index);
+              return (
+                <span
+                  className={`wheel-label${wedge.rare ? ' rare' : ''}${struck ? ' struck' : ''}`}
+                  key={`${wedge.gems}-${index}`}
+                  style={{ transform: `rotate(${wedge.centre}deg) translateY(-3.5rem)` }}
+                >
+                  {struck ? '✕' : wedge.gems}
+                </span>
+              );
+            })}
           </div>
           <div className={`wheel-hub${won !== null ? ' won' : ''}`} aria-hidden>
             ◈
@@ -283,24 +253,55 @@ export function WheelScreen({ onHome }: Props) {
         <div className="leaderboard-heading">
           <div>
             <h2>What it pays</h2>
-            <p>Every spin, the same odds.</p>
+            <p>
+              {left === WHEEL_WEDGES.length
+                ? 'A full board. Every wedge still standing.'
+                : `${left} of ${WHEEL_WEDGES.length} wedges left — the odds below are what is on the board now.`}
+            </p>
           </div>
+          {shown.length > 0 && (
+            <button
+              className="btn compact"
+              onClick={() => {
+                setResetting(true);
+                void resetWheel().finally(() => setResetting(false));
+              }}
+              disabled={resetting || spinning}
+            >
+              {resetting ? 'Resetting…' : 'Reset'}
+            </button>
+          )}
         </div>
+
+        {RARE_GEMS !== null && (
+          <p className="panel-note rare-odds">
+            ◈ {RARE_GEMS} is now <strong>{(rareShare * 100).toFixed(rareShare < 0.1 ? 1 : 0)}%</strong>
+            {shown.length > 0 && ' — every spin strikes a wedge off and shortens the odds.'}
+          </p>
+        )}
+        {justRefilled && (
+          <p className="panel-note">The board emptied, so it filled back up. Odds are back to full.</p>
+        )}
+
         <div className="odds-list">
-          {WHEEL_SEGMENTS.map((segment, index) => (
-            <div className="odds-row" key={segment.gems}>
+          {odds.map((row, index) => (
+            <div className={`odds-row${row.share === 0 ? ' spent' : ''}`} key={row.gems}>
               <span className="odds-prize">
                 <span
                   className="odds-swatch"
                   aria-hidden
                   style={{ background: SEGMENT_COLOURS[index % SEGMENT_COLOURS.length] }}
                 />
-                ◈ {segment.gems}
+                ◈ {row.gems}
               </span>
               <span className="odds-bar" aria-hidden>
-                <span style={{ width: `${(segment.weight / WHEEL_TOTAL_WEIGHT) * 100}%` }} />
+                <span style={{ width: `${row.share * 100}%` }} />
               </span>
-              <strong>{Math.round((segment.weight / WHEEL_TOTAL_WEIGHT) * 100)}%</strong>
+              <strong>
+                {row.share === 0
+                  ? 'gone'
+                  : `${(row.share * 100).toFixed(row.share < 0.1 ? 1 : 0)}%`}
+              </strong>
             </div>
           ))}
         </div>

@@ -98,6 +98,14 @@ export interface ProgressProfile {
   freeSpinAvailable: boolean;
   /** Advert-bought spins still available today. */
   adSpinsLeft: number;
+  /**
+   * Wedges already struck off, in `WHEEL_WEDGES` order.
+   *
+   * Every spin removes the wedge it landed on, so the odds of the rare prize
+   * climb until it is the only thing left. Kept on the server because a client
+   * that could edit this could strike off everything but the sliver.
+   */
+  markedWedges: number[];
   gamesPlayed: number;
   friends: FriendProfile[];
 }
@@ -108,6 +116,17 @@ export interface WheelResult {
   free: boolean;
   /** What actually paid for it. */
   source: 'free' | 'ad' | 'coins';
+  /**
+   * Which wedge it stopped on, in `WHEEL_WEDGES` order.
+   *
+   * The prize alone is not enough to animate with: a prize is spread over
+   * several wedges, and struck wedges slide the result along, so the wheel has
+   * to be told the exact one or it would stop somewhere that is not what was
+   * paid.
+   */
+  wedge: number;
+  /** True when that spin emptied the board and refilled it. */
+  refilled: boolean;
   profile: ProgressProfile;
 }
 

@@ -155,6 +155,10 @@ export default {
           await progress.leaderboard(credentials, body.mode, body.scope),
         );
       }
+      if (url.pathname === '/api/progress/wheel/reset') {
+        return resultJson(await progressStub(env).resetWheel(credentials));
+      }
+
       if (url.pathname === '/api/progress/wheel') {
         // `watchedAd` is the client's word for now. When a network is wired
         // up its verification token arrives here and is checked instead.

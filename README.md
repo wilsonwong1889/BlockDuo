@@ -268,7 +268,10 @@ a control to be tapped mid-drag as invalid traffic, and the strategy document
 rules out forced adverts inside play regardless.
 
 [`/privacy.html`](apps/web/public/privacy.html) is a plain crawlable page, not a
-hash route, because a reviewer and a crawler both need to reach it. It carries
+hash route, because a reviewer and a crawler both need to reach it. In
+production it is canonically `/privacy` — Workers assets redirects the `.html`
+form to it — while the link in the game keeps the extension, which is the one
+URL that resolves in local dev as well. It carries
 the advertising-cookie disclosure AdSense requires, and it names
 `privacy@blokduo.ca` — **an address that does not exist yet**; point it
 somewhere with Cloudflare Email Routing before applying, or change it.

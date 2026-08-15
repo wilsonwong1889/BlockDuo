@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type CSSProperties } from 'react';
 import {
   MAX_AD_SPINS_PER_DAY,
   WHEEL_COST_COINS,
@@ -76,6 +76,15 @@ function restingAngle(from: number, wedgeIndex: number): number {
   return from + 360 * SPIN_TURNS + delta;
 }
 
+/**
+ * Where each spark flies. Fixed rather than random per win, so the burst is
+ * the same shape every time and reads as part of the wheel.
+ */
+const SPARKS = Array.from({ length: 14 }, (_, i) => ({
+  angle: (360 / 14) * i + (i % 3) * 7,
+  reach: `${-4.4 - (i % 4) * 0.7}rem`,
+}));
+
 const prefersStillness = () =>
   typeof document !== 'undefined' &&
   document.documentElement.classList.contains('reduce-motion');
@@ -90,6 +99,11 @@ export function WheelScreen({ onHome }: Props) {
   const [shownMarks, setShownMarks] = useState<number[]>([]);
   const [resetting, setResetting] = useState(false);
   const [justRefilled, setJustRefilled] = useState(false);
+  // The profile's gem total arrives with the server's answer, which is long
+  // before the wheel stops. Showing it straight away would announce the prize
+  // over the top of the animation, so the header counts up on landing instead.
+  const [heldGems, setHeldGems] = useState<number | null>(null);
+  const [counting, setCounting] = useState(false);
   // Read during a spin, so it does not go stale behind the state update.
   const angleRef = useRef(0);
 
@@ -106,6 +120,7 @@ export function WheelScreen({ onHome }: Props) {
   const odds = liveOdds(shown);
   const rareShare = odds.find((row) => row.gems === RARE_GEMS)?.share ?? 0;
   const left = WHEEL_WEDGES.length - shown.length;
+  const wonRare = won !== null && won === RARE_GEMS;
 
   const spin = async (viaAd = false) => {
     if (spinning) return;
@@ -124,6 +139,7 @@ export function WheelScreen({ onHome }: Props) {
     setWon(null);
     setError(null);
     const before = profile?.markedWedges ?? [];
+    setHeldGems(profile?.gems ?? 0);
     try {
       const result = await spinWheel(viaAd);
       setWasFree(result.free);
@@ -143,6 +159,9 @@ export function WheelScreen({ onHome }: Props) {
         () => {
           setWon(result.gems);
           setSpinning(false);
+          setHeldGems(null);
+          setCounting(true);
+          window.setTimeout(() => setCounting(false), 600);
           if (result.refilled) setJustRefilled(true);
         },
         still ? 0 : SPIN_MS,
@@ -150,6 +169,7 @@ export function WheelScreen({ onHome }: Props) {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'The spin did not go through');
       setSpinning(false);
+      setHeldGems(null);
     }
   };
 
@@ -160,11 +180,18 @@ export function WheelScreen({ onHome }: Props) {
           ‹
         </button>
         <span className="topbar-title">Wheel</span>
-        <span className="gem-pill">◈ {profile?.gems?.toLocaleString() ?? '—'}</span>
+        <span className={`gem-pill${counting ? ' counting' : ''}`}>
+          ◈ {(heldGems ?? profile?.gems)?.toLocaleString() ?? '—'}
+        </span>
       </header>
 
       <section className="social-card wheel-card">
-        <div className="wheel-stage">
+        <div
+          className={`wheel-stage${spinning ? ' spinning' : ''}${
+            won !== null ? ' landed' : ''
+          }${wonRare ? ' rare' : ''}`}
+        >
+          <span className="wheel-glow" aria-hidden />
           <span className="wheel-pointer" aria-hidden />
           <div
             className="wheel"
@@ -187,7 +214,9 @@ export function WheelScreen({ onHome }: Props) {
                 <span
                   className={`wheel-label${wedge.rare ? ' rare' : ''}${struck ? ' struck' : ''}`}
                   key={`${wedge.gems}-${index}`}
-                  style={{ transform: `rotate(${wedge.centre}deg) translateY(-3.5rem)` }}
+                  style={{
+                    transform: `rotate(${wedge.centre}deg) translateY(calc(var(--label-radius) * -1))`,
+                  }}
                 >
                   {struck ? '✕' : wedge.gems}
                 </span>
@@ -198,9 +227,24 @@ export function WheelScreen({ onHome }: Props) {
             ◈
           </div>
           {won !== null && (
-            <span className="wheel-burst" aria-hidden>
-              +{won}
-            </span>
+            <>
+              <span className={`wheel-sparks${wonRare ? ' rare' : ''}`} aria-hidden>
+                {SPARKS.map((spark) => (
+                  <span
+                    key={spark.angle}
+                    style={
+                      {
+                        '--spark-angle': `${spark.angle}deg`,
+                        '--spark-reach': spark.reach,
+                      } as CSSProperties
+                    }
+                  />
+                ))}
+              </span>
+              <span className={`wheel-burst${wonRare ? ' rare' : ''}`} aria-hidden>
+                +{won}
+              </span>
+            </>
           )}
         </div>
 

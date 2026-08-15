@@ -12,6 +12,12 @@
   "observability": {
     "enabled": true
   },
+  // Public by design — ads.txt exists to be read by anyone — so a var rather
+  // than a secret, which keeps it applied on every deploy path instead of
+  // depending on somebody having run `wrangler secret put` against this Worker.
+  "vars": {
+    "ADSENSE_PUB_ID": "pub-7652843006088695"
+  },
 
   // The site and the room server ship as one Worker, on one origin.
   //

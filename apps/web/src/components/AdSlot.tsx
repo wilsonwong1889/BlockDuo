@@ -24,7 +24,10 @@ interface Props {
  * during play.
  */
 export function AdSlot({ slot, label = 'Advertisement' }: Props) {
-  const [enabled] = useState(() => adsenseEnabled());
+  // A unit needs its own slot ID. Without one there is nothing to place here —
+  // an `ins` with an empty slot is an error, not an empty advert — though the
+  // library may still be loaded elsewhere for Auto ads.
+  const [enabled] = useState(() => adsenseEnabled() && slot.trim() !== '');
   const ref = useRef<HTMLModElement>(null);
   const filled = useRef(false);
 

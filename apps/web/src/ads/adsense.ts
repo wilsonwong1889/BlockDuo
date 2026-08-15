@@ -27,9 +27,24 @@ export function adsenseClientFrom(raw: string | undefined | null): string | null
   return CLIENT_PATTERN.test(value) ? value : null;
 }
 
-/** The configured publisher ID, or null when there is not a valid one. */
+/**
+ * The account this site's inventory is sold under.
+ *
+ * Committed rather than configured, because it is public by construction — it
+ * is in the page source of every site running AdSense — and a value that has
+ * to be set on two separate deploy paths is one that will eventually be
+ * missing from one of them and take the adverts down without a failure.
+ */
+const PUBLISHER_ID = 'ca-pub-7652843006088695';
+
+/** The publisher ID in force, or null when adverts should not run. */
 export function adsenseClient(): string | null {
-  return adsenseClientFrom(import.meta.env.VITE_ADSENSE_CLIENT);
+  const override = import.meta.env.VITE_ADSENSE_CLIENT;
+  if (override !== undefined) return adsenseClientFrom(override);
+  // Never in development. Loading live adverts on localhost means impressions
+  // and clicks from the person who owns the account, which is exactly what
+  // gets an AdSense account suspended.
+  return import.meta.env.PROD ? adsenseClientFrom(PUBLISHER_ID) : null;
 }
 
 /**

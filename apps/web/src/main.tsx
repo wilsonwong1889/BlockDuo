@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { loadAdsense } from './ads/adsense';
 import { App } from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { installGlobalErrorReporting } from './telemetry';
@@ -12,6 +13,11 @@ import './styles/app.css';
 installGlobalErrorReporting();
 initialiseAppSettings();
 void initNative();
+
+// Loaded here rather than by a slot, because Auto ads are placed by the
+// library itself and need it present on pages that declare no unit of their
+// own. No-ops when adverts are off, and never runs in the native shell.
+loadAdsense();
 
 // Direct invite links skip the Home and Duo lobby buttons. Listen for any real
 // user activation so their WebSocket-driven sounds can play too. Keeping these

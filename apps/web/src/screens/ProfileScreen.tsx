@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { averageGameScore, type PublicProfile } from '@blokduo/engine';
+import { SettingsPanel } from '../components/SettingsPanel';
+import { updateAppSettings } from '../preferences';
 import { fetchPublicProfile } from '../progress/api';
 import { useProgress } from '../progress/ProgressContext';
+import { loadAppSettings, type AppSettings } from '../storage';
 import { timeAgo } from '../time';
 
 interface Props {
@@ -24,6 +27,13 @@ export function ProfileScreen({ code, onHome }: Props) {
   const [player, setPlayer] = useState<PublicProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [settings, setSettings] = useState(loadAppSettings);
+  const [showSettings, setShowSettings] = useState(false);
+
+  const changeSettings = (next: AppSettings) => {
+    setSettings(next);
+    updateAppSettings(next);
+  };
 
   useEffect(() => {
     if (!wanted) return;
@@ -112,6 +122,25 @@ export function ProfileScreen({ code, onHome }: Props) {
             </button>
           </section>
 
+          {isMe && (
+            <section className="leaderboard-card">
+              <div className="leaderboard-heading">
+                <div>
+                  <h2>Settings</h2>
+                  <p>Sound, haptics and motion, on this device.</p>
+                </div>
+                <button className="btn compact" onClick={() => setShowSettings(true)}>
+                  Open
+                </button>
+              </div>
+              <div className="settings-summary">
+                <span>Sound {settings.sound ? 'on' : 'off'}</span>
+                <span aria-hidden>·</span>
+                <span>Haptics {settings.haptics ? 'on' : 'off'}</span>
+              </div>
+            </section>
+          )}
+
           <section className="leaderboard-card">
             <div className="leaderboard-heading">
               <div>
@@ -136,6 +165,14 @@ export function ProfileScreen({ code, onHome }: Props) {
             )}
           </section>
         </>
+      )}
+
+      {showSettings && (
+        <SettingsPanel
+          settings={settings}
+          onChange={changeSettings}
+          onClose={() => setShowSettings(false)}
+        />
       )}
     </div>
   );

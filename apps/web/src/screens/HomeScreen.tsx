@@ -3,15 +3,8 @@ import { unlockAudio } from '../audio/sfx';
 import { AdSlot } from '../components/AdSlot';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { MovePrompt } from '../components/MovePrompt';
-import { SettingsPanel } from '../components/SettingsPanel';
-import { updateAppSettings } from '../preferences';
 import { useProgress } from '../progress/ProgressContext';
-import {
-  loadAppSettings,
-  loadBest,
-  loadClassicGame,
-  type AppSettings,
-} from '../storage';
+import { loadBest, loadClassicGame } from '../storage';
 
 interface Props {
   onClassic: () => void;
@@ -34,8 +27,7 @@ export function HomeScreen({
   onProfile,
   onWheel,
 }: Props) {
-  const [settings, setSettings] = useState(loadAppSettings);
-  const [panel, setPanel] = useState<'settings' | 'new-game' | null>(null);
+  const [panel, setPanel] = useState<'new-game' | null>(null);
   const { profile } = useProgress();
 
   // Read once on mount, not on every render: loadClassicGame parses a whole
@@ -50,11 +42,6 @@ export function HomeScreen({
   const { best, game: savedGame, ranked: savedRanked } = initial;
   const hasSavedProgress = !!savedGame && savedGame.state.moveCount > 0;
   const hasRankedProgress = !!savedRanked && savedRanked.state.moveCount > 0;
-
-  const changeSettings = (next: AppSettings) => {
-    setSettings(next);
-    updateAppSettings(next);
-  };
 
   const startClassic = () => {
     unlockAudio();
@@ -131,24 +118,34 @@ export function HomeScreen({
         </button>
       </div>
 
+      {/* A free spin nobody notices is a free spin nobody takes, and a text
+          link next to two others was not noticeable. */}
+      <button
+        className={`home-wheel${profile?.freeSpinAvailable ? ' ready' : ''}`}
+        onClick={onWheel}
+      >
+        <span className="home-wheel-dial" aria-hidden />
+        <span className="home-wheel-copy">
+          <strong>Daily wheel</strong>
+          <small>
+            {profile?.freeSpinAvailable
+              ? 'Free spin ready'
+              : `${profile?.adSpinsLeft ?? 0} advert spin${(profile?.adSpinsLeft ?? 0) === 1 ? '' : 's'} left today`}
+          </small>
+        </span>
+        <span className="gem-pill">◈ {profile?.gems?.toLocaleString() ?? '—'}</span>
+      </button>
+
       {best > 0 && <p className="home-best">Best {best.toLocaleString()}</p>}
 
       {/* Renders only on the address the game used to live at. */}
       <MovePrompt />
 
+      {/* Settings live on the profile now, so this row is one thing rather
+          than a list of three competing for the same glance. */}
       <div className="home-tools" aria-label="More options">
         <button className="link-btn" onClick={onProfile}>
-          Your profile
-        </button>
-        <span aria-hidden>·</span>
-        <button className="link-btn" onClick={onWheel}>
-          Wheel
-          {/* A free spin nobody notices is a free spin nobody takes. */}
-          {profile?.freeSpinAvailable && <span className="free-dot" aria-label="free spin ready" />}
-        </button>
-        <span aria-hidden>·</span>
-        <button className="link-btn" onClick={() => setPanel('settings')}>
-          Settings
+          Your profile &amp; settings
         </button>
       </div>
 
@@ -199,13 +196,6 @@ export function HomeScreen({
         </ul>
       </details>
 
-      {panel === 'settings' && (
-        <SettingsPanel
-          settings={settings}
-          onChange={changeSettings}
-          onClose={() => setPanel(null)}
-        />
-      )}
       {panel === 'new-game' && (
         <ConfirmDialog
           title="Start a new game?"

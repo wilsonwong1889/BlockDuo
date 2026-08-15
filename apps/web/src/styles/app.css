@@ -779,6 +779,16 @@ button {
   font-size: 1.05rem;
 }
 
+/* A sub-label is a second line, not a continuation of the first. `.btn.big`
+   stacks already; this covers the plain buttons that carry one too, which
+   otherwise ran their label and sub-label together into one sentence. */
+.btn:has(.btn-sub) {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  align-items: center;
+}
+
 .btn-sub {
   font-size: 0.72rem;
   font-weight: 600;
@@ -924,6 +934,94 @@ button {
   width: min(100%, 22rem);
   margin: 1.75rem auto 0;
   min-height: 3.5rem;
+}
+
+/* The wheel, promoted from a text link. Same width as the play buttons so it
+   reads as part of the menu rather than a banner stuck underneath it. */
+.home-wheel {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: min(100%, 22rem);
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.04);
+  text-align: left;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.15s ease;
+}
+
+.home-wheel:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.home-wheel:active {
+  transform: scale(0.985);
+}
+
+/* A free spin is the one thing on this screen worth interrupting for. */
+.home-wheel.ready {
+  border-color: rgba(250, 204, 21, 0.45);
+  background: rgba(250, 204, 21, 0.09);
+}
+
+.home-wheel-dial {
+  flex: none;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    rgba(110, 231, 255, 0.9) 0deg 90deg,
+    rgba(167, 139, 250, 0.9) 90deg 180deg,
+    rgba(52, 211, 153, 0.9) 180deg 270deg,
+    rgba(250, 204, 21, 0.95) 270deg 360deg
+  );
+  box-shadow: inset 0 0 0 0.28rem var(--panel);
+}
+
+.home-wheel.ready .home-wheel-dial {
+  animation: dialTurn 5.5s linear infinite;
+}
+
+@keyframes dialTurn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.home-wheel-copy {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.home-wheel-copy strong {
+  font-size: 0.92rem;
+}
+
+.home-wheel-copy small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.home-wheel.ready .home-wheel-copy small {
+  color: #ffe89a;
+}
+
+/* What the settings are without opening them, so the row is worth a glance. */
+.settings-summary {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+html.reduce-motion .home-wheel.ready .home-wheel-dial {
+  animation: none;
 }
 
 /* Sits below the tools row, quieter than it: these are read once, not used. */
@@ -1976,43 +2074,126 @@ html.high-contrast .app-version {
   gap: 0.8rem;
 }
 
-.wheel {
+.wheel-stage {
+  position: relative;
   display: grid;
   place-items: center;
-  width: 9rem;
-  height: 9rem;
-  border-radius: 50%;
-  background: conic-gradient(
-    from 0deg,
-    rgba(167, 139, 250, 0.85) 0deg 90deg,
-    rgba(110, 231, 255, 0.8) 90deg 180deg,
-    rgba(244, 63, 94, 0.75) 180deg 270deg,
-    rgba(250, 204, 21, 0.85) 270deg 360deg
-  );
-  box-shadow: 0 0 30px rgba(167, 139, 250, 0.3), inset 0 0 0 3px rgba(255, 255, 255, 0.12);
+  width: 11rem;
+  height: 11rem;
+  margin: 0.4rem 0 0.2rem;
 }
 
-.wheel-face {
+.wheel {
+  position: relative;
+  width: 10rem;
+  height: 10rem;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 0.35rem rgba(255, 255, 255, 0.06),
+    0 0.6rem 1.6rem rgba(0, 0, 0, 0.45);
+  will-change: transform;
+}
+
+/* Numbers ride the wheel, so a player can see which wedge they landed on
+   rather than taking the result line's word for it. */
+.wheel-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin: -0.6rem 0 0 -0.6rem;
+  width: 1.2rem;
+  height: 1.2rem;
   display: grid;
   place-items: center;
-  width: 3.4rem;
-  height: 3.4rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: rgba(8, 12, 28, 0.85);
+  transform-origin: center;
+  pointer-events: none;
+}
+
+/* Sits above the wheel and does not turn with it: this is the thing the
+   winning wedge has to come round to. */
+.wheel-pointer {
+  position: absolute;
+  top: -0.15rem;
+  z-index: 2;
+  width: 0;
+  height: 0;
+  border-left: 0.5rem solid transparent;
+  border-right: 0.5rem solid transparent;
+  border-top: 0.8rem solid var(--text);
+  filter: drop-shadow(0 0.1rem 0.2rem rgba(0, 0, 0, 0.6));
+}
+
+.wheel-hub {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 3.2rem;
+  height: 3.2rem;
   border-radius: 50%;
   background: var(--panel);
-  font-size: 1.4rem;
+  box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.05);
+  font-size: 1.3rem;
   color: #ddd6fe;
+  z-index: 1;
 }
 
-/* Four seconds of easing out, so it looks like it is losing momentum rather
-   than being switched off. */
-.wheel.spinning {
-  animation: wheelSpin 1.4s cubic-bezier(0.15, 0.85, 0.2, 1);
+.wheel-hub.won {
+  animation: hubPop 520ms cubic-bezier(0.2, 1.5, 0.4, 1);
 }
 
-@keyframes wheelSpin {
-  to {
-    transform: rotate(1440deg);
+@keyframes hubPop {
+  0% {
+    transform: scale(1);
   }
+  45% {
+    transform: scale(1.28);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* The prize, leaving. Rises and fades once the wheel has settled. */
+.wheel-burst {
+  position: absolute;
+  z-index: 3;
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: #ffe89a;
+  text-shadow: 0 0.15rem 0.5rem rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+  animation: burstRise 1400ms ease-out forwards;
+}
+
+@keyframes burstRise {
+  0% {
+    opacity: 0;
+    transform: translateY(0.6rem) scale(0.7);
+  }
+  25% {
+    opacity: 1;
+    transform: translateY(-0.6rem) scale(1.1);
+  }
+  70% {
+    opacity: 1;
+    transform: translateY(-2rem) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-3.4rem) scale(0.95);
+  }
+}
+
+.odds-swatch {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 0.15rem;
+  margin-right: 0.35rem;
+  vertical-align: middle;
 }
 
 .wheel-result {
@@ -2062,8 +2243,8 @@ html.high-contrast .app-version {
   font-size: 0.7rem;
 }
 
-html.reduce-motion .wheel.spinning {
-  animation: none;
+html.reduce-motion .wheel {
+  transition: none !important;
 }
 
 .free-dot {

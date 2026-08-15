@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type {
   ClaimResult,
   GameAction,
@@ -27,6 +35,7 @@ import {
   fetchProfile,
   removeFriend as removeFriendRequest,
 } from './api';
+import { shouldRefreshOnAmbientEvent } from './refreshPolicy';
 import { shouldDiscardPendingClassic } from './retryPolicy';
 
 interface ProgressContextValue {
@@ -51,7 +60,12 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Stamped before the request rather than after, so a burst of focus events
+  // cannot each start their own round trip while the first is still in flight.
+  const lastRefreshAt = useRef(0);
+
   const refresh = useCallback(async (): Promise<ProgressProfile | null> => {
+    lastRefreshAt.current = Date.now();
     try {
       const next = await fetchProfile(loadName() || 'Player');
       setProfile(next);
@@ -101,15 +115,26 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     void refresh().then(() => flushPending());
+    // Caused by the player, so never throttled: the coins on screen are wrong
+    // until this lands.
     const onChange = () => void refresh();
-    const onOnline = () => void flushPending().then(() => refresh());
+    // Woken by the browser rather than by the player. Worth a round trip only
+    // if something is actually waiting, or enough time has passed.
+    const onAmbient = () => {
+      if (
+        !shouldRefreshOnAmbientEvent(Date.now(), lastRefreshAt.current, loadPendingClassic().length)
+      ) {
+        return;
+      }
+      void flushPending().then(() => refresh());
+    };
     window.addEventListener('blokduo:progress-change', onChange);
-    window.addEventListener('online', onOnline);
-    window.addEventListener('focus', onOnline);
+    window.addEventListener('online', onAmbient);
+    window.addEventListener('focus', onAmbient);
     return () => {
       window.removeEventListener('blokduo:progress-change', onChange);
-      window.removeEventListener('online', onOnline);
-      window.removeEventListener('focus', onOnline);
+      window.removeEventListener('online', onAmbient);
+      window.removeEventListener('focus', onAmbient);
     };
   }, [flushPending, refresh]);
 

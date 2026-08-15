@@ -70,4 +70,19 @@ describe('normalizedHash', () => {
     expect(normalizedHash({ name: 'social' })).toBe('#/social');
     expect(normalizedHash({ name: 'home' })).toBe('#/');
   });
+
+  it('reads a transfer code, lower-cased, because it is hex and not spoken', () => {
+    expect(parseHash('#/move/A1B2C3D4E5F60718293A4B5C6D7E8F90')).toEqual({
+      name: 'move',
+      code: 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
+    });
+  });
+
+  it('treats a transfer link with no code as a transfer that cannot happen', () => {
+    expect(parseHash('#/move')).toEqual({ name: 'move', code: undefined });
+  });
+
+  it('drops a spent transfer code from the URL, so a reload cannot retry it', () => {
+    expect(normalizedHash({ name: 'move', code: 'a'.repeat(32) })).toBe('#/');
+  });
 });

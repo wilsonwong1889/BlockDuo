@@ -926,6 +926,61 @@ button {
   min-height: 3.5rem;
 }
 
+/* Only ever seen on the old address, by someone who followed an old link. */
+.move-prompt {
+  width: min(100%, 22rem);
+  margin: 1.5rem auto 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(110, 168, 254, 0.35);
+  border-radius: 0.7rem;
+  background: rgba(110, 168, 254, 0.08);
+  text-align: center;
+}
+
+.move-prompt-title {
+  margin: 0 0 0.35rem;
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.move-prompt-body {
+  margin: 0 0 0.75rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.move-prompt-error {
+  margin: 0.6rem 0 0;
+  color: #ff9aa2;
+  font-size: 0.75rem;
+}
+
+.move-screen {
+  justify-content: center;
+  text-align: center;
+  gap: 1rem;
+  padding: 2rem 1.25rem;
+}
+
+.move-title {
+  font-size: 1.5rem;
+  margin: 0;
+}
+
+.move-body {
+  max-width: 26rem;
+  margin: 0 auto;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.move-body.muted {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
 .settings-list {
   display: flex;
   flex-direction: column;

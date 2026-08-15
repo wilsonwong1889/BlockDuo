@@ -67,6 +67,12 @@ export async function ensureProgressIdentity(): Promise<ProgressIdentity> {
     name: loadName() || 'Player',
   })
     .then(({ identity }) => {
+      // Following a transfer link does two things at once: the app boots and
+      // asks for a guest, and the move screen claims the real profile. Either
+      // can finish first, so the guest defers to anything already stored
+      // rather than overwriting the account the player came here to recover.
+      const existing = loadProgressIdentity();
+      if (existing?.clientId && existing.token) return existing;
       saveProgressIdentity(identity);
       return identity;
     })
@@ -149,4 +155,26 @@ export async function fetchRoomTicket(code: string, name: string): Promise<strin
 
 export function announceProgressChange() {
   window.dispatchEvent(new Event('blokduo:progress-change'));
+}
+
+/** Mint a one-time code that carries this profile to another origin. */
+export function createTransfer(): Promise<{ code: string; expiresAt: number }> {
+  return authenticated('/api/progress/transfer/create');
+}
+
+/**
+ * Redeem a transfer code and adopt the profile it names.
+ *
+ * Deliberately unconditional: whatever guest profile this browser made on
+ * arriving at the new domain is replaced, because a player who followed a
+ * transfer link is asking for the older account and the local one is empty by
+ * construction — it was minted seconds ago by their first page load.
+ */
+export async function claimTransfer(code: string): Promise<ProgressIdentity> {
+  const { identity } = await post<{ identity: ProgressIdentity }>(
+    '/api/progress/transfer/claim',
+    { code },
+  );
+  saveProgressIdentity(identity);
+  return identity;
 }

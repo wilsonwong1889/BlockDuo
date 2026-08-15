@@ -29,3 +29,24 @@ export function roomSocketUrl(code: string, ticket: string): string {
 export function inviteUrl(code: string): string {
   return `${window.location.origin}${window.location.pathname}#/duo/${code}`;
 }
+
+/** Where the game lives now. */
+export const CANONICAL_ORIGIN = 'https://blokduo.ca';
+
+/**
+ * Whether this page is being served from the address the game used to use.
+ *
+ * The workers.dev origin still serves the game, deliberately, so invite links
+ * handed out before the domain existed keep working. But progress is kept
+ * under credentials in localStorage, which browsers key per origin, so a
+ * player who moves across looks like a new one. Matched on the suffix rather
+ * than the exact host so a renamed Worker or a preview deployment still counts.
+ */
+export function isLegacyOrigin(): boolean {
+  return window.location.hostname.endsWith('.workers.dev');
+}
+
+/** The link that carries a profile from the old origin to the new one. */
+export function transferUrl(code: string): string {
+  return `${CANONICAL_ORIGIN}/#/move/${code}`;
+}

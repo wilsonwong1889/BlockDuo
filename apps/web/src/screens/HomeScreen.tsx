@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { unlockAudio } from '../audio/sfx';
 import { AdSlot } from '../components/AdSlot';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { MovePrompt } from '../components/MovePrompt';
 import { SettingsPanel } from '../components/SettingsPanel';
 import { updateAppSettings } from '../preferences';
 import { useProgress } from '../progress/ProgressContext';
@@ -131,6 +132,9 @@ export function HomeScreen({
       </div>
 
       {best > 0 && <p className="home-best">Best {best.toLocaleString()}</p>}
+
+      {/* Renders only on the address the game used to live at. */}
+      <MovePrompt />
 
       <div className="home-tools" aria-label="More options">
         <button className="link-btn" onClick={onProfile}>

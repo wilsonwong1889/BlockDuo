@@ -4,6 +4,7 @@ import { ClassicScreen } from './screens/ClassicScreen';
 import { DuoLobby } from './screens/DuoLobby';
 import { DuoScreen } from './screens/DuoScreen';
 import { HomeScreen } from './screens/HomeScreen';
+import { MoveScreen } from './screens/MoveScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
 import { SocialScreen } from './screens/SocialScreen';
 import { WheelScreen } from './screens/WheelScreen';
@@ -62,6 +63,17 @@ export function App() {
       return (
         <ProfileScreen
           key={route.code ?? 'me'}
+          code={route.code ?? null}
+          onHome={() => go('/')}
+        />
+      );
+    case 'move':
+      // Keyed on the code: following a second transfer link without a reload is
+      // a same-document hash change, and an unkeyed screen would keep the first
+      // result on display without ever claiming the second.
+      return (
+        <MoveScreen
+          key={route.code ?? 'none'}
           code={route.code ?? null}
           onHome={() => go('/')}
         />

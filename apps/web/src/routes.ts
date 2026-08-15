@@ -15,6 +15,8 @@ export type Route =
   | { name: 'duo'; code?: string }
   | { name: 'social' }
   | { name: 'wheel' }
+  /** Redeeming a transfer code minted on the origin the game used to live on. */
+  | { name: 'move'; code?: string }
   /** No code means "whoever is playing on this device". */
   | { name: 'player'; code?: string };
 
@@ -27,6 +29,9 @@ export function parseHash(hash: string): Route {
   if (head === 'player') return { name: 'player', code: arg ? arg.toUpperCase() : undefined };
   if (head === 'social') return { name: 'social' };
   if (head === 'wheel') return { name: 'wheel' };
+  // Lower-cased rather than upper: this one is hex from the server, not a code
+  // anybody reads aloud.
+  if (head === 'move') return { name: 'move', code: arg ? arg.toLowerCase() : undefined };
   return { name: 'home' };
 }
 
@@ -51,6 +56,11 @@ export function normalizedHash(route: Route): string {
       return '#/social';
     case 'wheel':
       return '#/wheel';
+    // Like `#/classic/new`, this is an instruction and not a place: the code is
+    // spent the moment it is redeemed, so leaving it in the URL would mean a
+    // reload retrying a claim that can only fail the second time.
+    case 'move':
+      return '#/';
     default:
       return '#/';
   }

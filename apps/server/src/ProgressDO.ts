@@ -139,6 +139,29 @@ const METRIC_RETENTION_DAYS = 90;
 /** Durable Object storage takes at most 128 keys in one put. */
 const MAX_PUT_KEYS = 100;
 
+/**
+ * How long a transfer code is worth anything.
+ *
+ * A code is a bearer credential for somebody's whole profile, so it is meant
+ * to survive the walk from one tab to another and nothing longer. Long enough
+ * that a slow page load or a paste into another browser still works.
+ */
+const TRANSFER_TTL_MS = 15 * 60_000;
+
+interface StoredTransfer {
+  clientId: string;
+  /**
+   * The token handed back on claim.
+   *
+   * Kept rather than reissued so the original device keeps working: moving
+   * progress to a new domain should not log anybody out of the old one. Only
+   * the profile's own holder can mint this, it dies in fifteen minutes, and it
+   * is deleted the first time it is read.
+   */
+  token: string;
+  expiresAt: number;
+}
+
 interface StoredClaim {
   reward: CoinReward;
   weeklyBest: boolean;
@@ -558,6 +581,62 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
    * cannot be turned into anything that acts on the account. No credentials are
    * required — that is what makes it public.
    */
+  /**
+   * Mint a one-time code that moves this profile to another origin.
+   *
+   * The progression data was never split — one Durable Object serves every
+   * hostname — but the credentials that name a player live in localStorage,
+   * which browsers key per origin. So a player arriving on a new domain is
+   * handed a new profile while their real one carries on existing without
+   * them. This is how they carry the credentials across.
+   */
+  async createTransfer(
+    credentials: ProgressCredentials,
+  ): Promise<ProgressResult<{ code: string; expiresAt: number }>> {
+    await this.ensureMigrations();
+    const profile = await this.authenticateRecord(credentials);
+    if (!profile) return fail(401, 'Not signed in on this device');
+
+    return this.mutate(async () => {
+      const code = randomHex(16);
+      const expiresAt = Date.now() + TRANSFER_TTL_MS;
+      const record: StoredTransfer = { clientId: profile.clientId, token: credentials.token, expiresAt };
+      await this.ctx.storage.put(transferKey(code), record);
+      return ok({ code, expiresAt });
+    });
+  }
+
+  /**
+   * Redeem a transfer code for the credentials it stands for.
+   *
+   * Deleted on the way through whatever happens next, because a code that
+   * survived a failed claim would be a profile handed to whoever retried it.
+   * Anybody holding the code gets the account, which is why it is short-lived
+   * and why the link should be treated like a password.
+   */
+  async claimTransfer(
+    rawCode: string,
+  ): Promise<ProgressResult<{ identity: ProgressCredentials }>> {
+    await this.ensureMigrations();
+    const code = (rawCode ?? '').trim().toLowerCase();
+    if (!/^[0-9a-f]{32}$/.test(code)) return fail(400, 'That is not a transfer code');
+
+    return this.mutate(async () => {
+      const key = transferKey(code);
+      const record = await this.ctx.storage.get<StoredTransfer>(key);
+      if (!record) return fail<{ identity: ProgressCredentials }>(404, 'That link has already been used, or has expired');
+      await this.ctx.storage.delete(key);
+
+      if (record.expiresAt < Date.now()) {
+        return fail<{ identity: ProgressCredentials }>(410, 'That link has expired');
+      }
+      const profile = await this.ctx.storage.get<StoredProfile>(profileKey(record.clientId));
+      if (!profile) return fail<{ identity: ProgressCredentials }>(404, 'That profile no longer exists');
+
+      return ok({ identity: { clientId: profile.clientId, token: record.token } });
+    });
+  }
+
   async publicProfile(rawCode: string): Promise<ProgressResult<PublicProfile>> {
     await this.ensureMigrations();
 
@@ -1014,6 +1093,10 @@ function profileKey(clientId: string) {
 
 function codeKey(friendCode: string) {
   return `code:${friendCode}`;
+}
+
+function transferKey(code: string) {
+  return `transfer:${code}`;
 }
 
 function scorePrefix(window: string, mode: GameMode) {

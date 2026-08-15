@@ -224,6 +224,33 @@ explicitly. Removing it silently breaks every link on the old origin.
 The one origin written down rather than discovered is the native build's
 `VITE_SERVER_URL`.
 
+### Moving a profile between the two addresses
+
+Nothing about progress is per-domain on the server: every hostname reaches one
+Durable Object, `idFromName('global')`, so the leaderboards already hold every
+score set at either address and there is no data to migrate.
+
+What is per-domain is the browser. The credentials naming a player live in
+localStorage, which is keyed per origin, so somebody who played on the
+workers.dev address and then opens blokduo.ca is handed a brand new profile
+while their real one carries on existing without them.
+
+So the old origin — and only the old origin — offers to move it. That mints a
+one-time code and opens `blokduo.ca/#/move/<code>`, which claims it and adopts
+the profile. The code is a bearer credential for a whole account, so it dies
+after fifteen minutes, is deleted the first time it is read, and can only be
+minted by somebody already signed in as that player. The original device keeps
+working: the token is handed over rather than reissued, because moving to a new
+address should not log anybody out of the old one.
+
+Two things this had to get right, both found by running it rather than by
+reading it. The code is spent out of the URL as well as on the server, or a
+reload retries a claim that can now only fail and tells somebody whose move
+worked that it did not. And the guest profile the app creates on load defers to
+anything already stored, because booting the app and claiming the transfer race
+each other — the guest used to win, silently discarding the account the player
+had just recovered.
+
 ## Advertising
 
 Two different things, which are easy to confuse because both are Google:

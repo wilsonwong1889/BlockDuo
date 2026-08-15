@@ -104,6 +104,21 @@ export default {
       );
     }
 
+    // Moving a profile between origins. Both are POST for the same reason as
+    // the rest: a transfer code is a bearer credential for somebody's whole
+    // account, and a query string is the one place it must never appear.
+    if (url.pathname === '/api/progress/transfer/create' && request.method === 'POST') {
+      const body = await bodyOf(request);
+      if (!body) return json({ error: 'Invalid JSON body' }, 400);
+      return resultJson(await progressStub(env).createTransfer(credentialsOf(body)));
+    }
+
+    if (url.pathname === '/api/progress/transfer/claim' && request.method === 'POST') {
+      const body = await bodyOf(request);
+      if (!body) return json({ error: 'Invalid JSON body' }, 400);
+      return resultJson(await progressStub(env).claimTransfer(String(body.code ?? '')));
+    }
+
     // The one progression route with no credentials: a public profile, keyed by
     // the code players already hand out. GET because it is a public resource
     // with nothing secret in the path — the token never appears here.

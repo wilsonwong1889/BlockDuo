@@ -30,10 +30,17 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Test
-        run: npm test
-
       # Catches what typechecking cannot: a build that fails on config, on an
       # import that only resolves in the editor, or on the version file.
+      #
+      # Runs before the tests because the server suite boots the real Worker,
+      # and the Worker's config serves assets out of apps/web/dist. Miniflare
+      # checks that directory exists while it is still reading the config, so
+      # without a build first the whole suite fails to start. It survives
+      # locally only because a previous build left a dist behind; a fresh
+      # checkout has none, dist being generated and gitignored.
       - name: Build
         run: npm run build
+
+      - name: Test
+        run: npm test

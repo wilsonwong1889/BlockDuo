@@ -11,10 +11,45 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="canonical" href="https://blokduo.ca/" />
+    <meta property="og:title" content="BLOKDUO — an 8×8 block puzzle, solo or two-up" />
+    <meta
+      property="og:description"
+      content="Fill rows and columns. Play on your own, or share one board with a friend live. Free, no account, no download."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://blokduo.ca/" />
+    <meta name="twitter:card" content="summary" />
     <title>BLOKDUO</title>
   </head>
   <body>
-    <div id="root"></div>
+    <!--
+      Replaced by the app the moment it mounts. It exists so the page is not a
+      blank screen without JavaScript, and so anything reading the HTML rather
+      than running it still finds the written pages — the app draws the same
+      links once it has loaded, so this says nothing a player is not shown.
+    -->
+    <div id="root">
+      <main>
+        <h1>BLOKDUO</h1>
+        <p>Fill rows and columns. Solo, or two-up on one board.</p>
+        <p>
+          BLOKDUO is a free 8×8 block puzzle. You are dealt three pieces at a time and drop them
+          onto a grid; fill a whole row or column and it clears. Nothing falls afterwards, so the
+          gaps you leave are yours to deal with. In Duo mode two people share one board and one
+          tray of pieces, taking alternating turns, live.
+        </p>
+        <p>It runs in the browser. No download, no account, and nothing to install.</p>
+        <p>
+          <a href="/how-to-play.html">How to play</a> · <a href="/about.html">About</a> ·
+          <a href="/contact.html">Contact</a> · <a href="/privacy.html">Privacy</a> ·
+          <a href="/terms.html">Terms</a>
+        </p>
+        <noscript>
+          <p><strong>BLOKDUO needs JavaScript to play.</strong> The pages above read fine without it.</p>
+        </noscript>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

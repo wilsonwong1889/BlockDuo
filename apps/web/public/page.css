@@ -1,0 +1,152 @@
+/*
+ * Shared styling for the written pages — about, how to play, terms, contact,
+ * privacy.
+ *
+ * These are plain static files rather than routes in the app, because a page
+ * that only exists once React has run is a page a crawler cannot read and a
+ * reviewer cannot check. One stylesheet between them so they stay a set rather
+ * than five things that drifted apart.
+ */
+:root {
+  color-scheme: dark;
+  --bg: #0b1020;
+  --panel: #141a30;
+  --text: #e8ecf8;
+  --muted: #9aa4c4;
+  --accent: #6ea8fe;
+  --line: #263054;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 1.5rem 1.25rem 4rem;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.65 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+main {
+  max-width: 46rem;
+  margin: 0 auto;
+}
+
+a {
+  color: var(--accent);
+}
+
+h1 {
+  font-size: 1.9rem;
+  margin: 0 0 0.25rem;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-size: 1.15rem;
+  margin: 2.25rem 0 0.5rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.4rem;
+}
+
+h3 {
+  font-size: 1rem;
+  margin: 1.5rem 0 0.4rem;
+}
+
+.updated,
+.standfirst {
+  color: var(--muted);
+  margin: 0 0 2rem;
+  font-size: 0.9rem;
+}
+
+/* The bar of links every page carries, so nothing is an orphan. */
+.site-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 2rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.88rem;
+}
+
+.site-nav .brand {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+}
+
+.site-nav .brand span {
+  color: var(--accent);
+}
+
+.site-nav a:not(.brand) {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.site-nav a:not(.brand):hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  font-size: 0.94rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.55rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* Wide tables scroll inside themselves rather than the page. */
+.wrap {
+  overflow-x: auto;
+}
+
+.note {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  padding: 0.9rem 1rem;
+  margin: 1.25rem 0;
+}
+
+.cta {
+  display: inline-block;
+  margin: 1.5rem 0 0;
+  padding: 0.7rem 1.4rem;
+  border-radius: 0.6rem;
+  background: var(--accent);
+  color: #08122b;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+li {
+  margin-bottom: 0.35rem;
+}
+
+footer {
+  margin-top: 3rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+}

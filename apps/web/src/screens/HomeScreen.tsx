@@ -150,13 +150,32 @@ export function HomeScreen({
         <button className="link-btn" onClick={() => setPanel('settings')}>
           Settings
         </button>
+      </div>
+
+      {/* Plain anchors to the written pages, not routes: a crawler and a
+          reviewer both need to reach them without running the app, and pages
+          nothing links to may as well not exist. */}
+      <nav className="home-pages" aria-label="About this site">
+        <a className="link-btn" href="/how-to-play.html">
+          How to play
+        </a>
         <span aria-hidden>·</span>
-        {/* Reachable from the game itself, which is what an advert network and
-            a player both expect — and a plain link, so a crawler sees it. */}
+        <a className="link-btn" href="/about.html">
+          About
+        </a>
+        <span aria-hidden>·</span>
+        <a className="link-btn" href="/contact.html">
+          Contact
+        </a>
+        <span aria-hidden>·</span>
         <a className="link-btn" href="/privacy.html">
           Privacy
         </a>
-      </div>
+        <span aria-hidden>·</span>
+        <a className="link-btn" href="/terms.html">
+          Terms
+        </a>
+      </nav>
 
       {/* Menus and result screens only. An advert next to the board would be
           tapped by accident mid-drag, which Google counts as invalid traffic. */}

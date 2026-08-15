@@ -926,6 +926,19 @@ button {
   min-height: 3.5rem;
 }
 
+/* Sits below the tools row, quieter than it: these are read once, not used. */
+.home-pages {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+  opacity: 0.85;
+}
+
 /* Only ever seen on the old address, by someone who followed an old link. */
 .move-prompt {
   width: min(100%, 22rem);

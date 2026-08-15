@@ -1,0 +1,7 @@
+# Everything here is meant to be found. The point of this file is the sitemap
+# line: the game itself is one page that draws its links with JavaScript, so a
+# crawler that does not run it needs to be told where the written pages are.
+User-agent: *
+Allow: /
+
+Sitemap: https://blokduo.ca/sitemap.xml

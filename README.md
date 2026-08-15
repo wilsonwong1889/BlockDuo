@@ -1,6 +1,7 @@
 # BLOKDUO
 
 **Live: https://blokduo.wilsonwong1889.workers.dev**
+**Domain: blokduo.ca** — see [Custom domain](#custom-domain) to point it here.
 
 An 8×8 block puzzle you can play solo, or two-up on one shared board, live.
 
@@ -175,7 +176,7 @@ only SQLite-backed ones, which is what `new_sqlite_classes` in
 To play a live duo game against a stand-in partner:
 
 ```bash
-BLOKDUO_ORIGIN=https://blokduo.wilsonwong1889.workers.dev node apps/server/scripts/partner-bot.ts ROOMCODE
+BLOKDUO_ORIGIN=https://blokduo.ca node apps/server/scripts/partner-bot.ts ROOMCODE
 ```
 
 ### Seeing how it is going
@@ -185,12 +186,42 @@ rooms opened, wheel spins — are kept for 90 days and read behind a secret:
 
 ```bash
 npx wrangler secret put ADMIN_TOKEN --config apps/server/wrangler.jsonc
-curl "https://your-worker.workers.dev/api/admin/metrics?token=SECRET&days=14"
+curl "https://blokduo.ca/api/admin/metrics?token=SECRET&days=14"
 ```
 
 Without the secret set the endpoint answers 404, because a metrics endpoint
 that opens itself when nobody configured it is the wrong default. Nothing in
 there identifies a player: a day, a name and a number.
+
+## Custom domain
+
+The app builds every URL it uses — API calls, the room socket, invite links —
+from `window.location.origin`, so it follows whatever domain serves it. Pointing
+`blokduo.ca` here needs no code change; it is three steps outside the repository.
+
+1. **Add the zone to Cloudflare.** In the dashboard, add `blokduo.ca` as a site.
+   Cloudflare gives you two nameservers.
+2. **Move the nameservers at Spaceship.** In the domain's DNS settings, replace
+   the registrar's nameservers with Cloudflare's. Propagation is usually minutes
+   but is allowed to take up to 48 hours; Cloudflare emails when the zone is
+   active. Workers custom domains need the zone on Cloudflare — a plain CNAME at
+   another DNS host will not do.
+3. **Attach it to the Worker.** Either in the dashboard, under the Worker's
+   Settings → Domains & Routes → Add custom domain, or by uncommenting the
+   `routes` block in [`wrangler.jsonc`](wrangler.jsonc) and deploying. The
+   dashboard is the safer first move: it checks the zone exists, where wrangler
+   simply fails the deploy.
+
+Cloudflare issues the certificate and creates the DNS record itself; there is no
+origin server to point at because the Worker *is* the origin.
+
+The `workers.dev` address keeps working afterwards. Invite links already in
+circulation stay valid, and links made after the switch carry the new domain,
+because both are built from wherever the page was loaded.
+
+Two things to change once it is live: the `Live:` line above, and the native
+build's `VITE_SERVER_URL`, which is the one place an origin is written down
+rather than discovered.
 
 ## The app
 
@@ -209,7 +240,7 @@ invite opens the room directly.
 bundle, so there is no origin for the duo server to be relative to.
 
 ```bash
-VITE_SERVER_URL=https://your-worker.workers.dev npm run sync --workspace=@blokduo/mobile
+VITE_SERVER_URL=https://blokduo.ca npm run sync --workspace=@blokduo/mobile
 ```
 
 ### iOS needs a toolchain this machine doesn't have yet

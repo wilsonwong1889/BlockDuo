@@ -10,6 +10,19 @@
   "observability": {
     "enabled": true
   },
+
+  // The custom domain, once blokduo.ca is a zone on Cloudflare.
+  //
+  // Left commented on purpose: wrangler fails the deploy if it is asked to
+  // attach a route for a zone the account does not hold, and this repository
+  // deploys on push — so uncommenting before the nameservers have moved would
+  // break deploys rather than add a domain. Attach it in the dashboard first
+  // (which checks the zone exists), or move the nameservers and uncomment.
+  //
+  // "routes": [
+  //   { "pattern": "blokduo.ca", "custom_domain": true },
+  //   { "pattern": "www.blokduo.ca", "custom_domain": true }
+  // ],
   "assets": {
     "directory": "apps/web/dist"
   },

@@ -7,6 +7,9 @@ interface Props {
   /** Shown when the board has loaded and has nothing in it. */
   emptyText: string;
   loading: boolean;
+  /** Set when the board could not be fetched, which is not the same as empty. */
+  error?: string | null;
+  onRetry?: () => void;
   onPlayer?: (friendCode: string) => void;
 }
 
@@ -16,7 +19,16 @@ const PLACES = ['1st', '2nd', '3rd'] as const;
 
 const medalOf = (rank: number) => (rank <= MEDALS.length ? MEDALS[rank - 1] : null);
 
-export function Leaderboard({ title, subtitle, board, emptyText, loading, onPlayer }: Props) {
+export function Leaderboard({
+  title,
+  subtitle,
+  board,
+  emptyText,
+  loading,
+  error,
+  onRetry,
+  onPlayer,
+}: Props) {
   return (
     <section className="board-section">
       <div className="leaderboard-heading">
@@ -29,7 +41,23 @@ export function Leaderboard({ title, subtitle, board, emptyText, loading, onPlay
 
       <div className="leaderboard-list" aria-live="polite">
         {loading && <p className="empty-board">Loading scores…</p>}
-        {board && board.entries.length === 0 && <p className="empty-board">{emptyText}</p>}
+
+        {/* "Nothing here" and "we could not ask" look identical if you only
+            ever render the empty state, and only one of them is worth retrying. */}
+        {error && (
+          <div className="board-error">
+            <p>{error}</p>
+            {onRetry && (
+              <button className="btn compact" onClick={onRetry}>
+                Try again
+              </button>
+            )}
+          </div>
+        )}
+
+        {!error && board && board.entries.length === 0 && (
+          <p className="empty-board">{emptyText}</p>
+        )}
         {board?.entries.map((entry) => (
           <Row entry={entry} onPlayer={onPlayer} key={`${entry.rank}-${entry.name}`} />
         ))}

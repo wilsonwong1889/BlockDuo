@@ -177,9 +177,20 @@ const fail = <T>(status: number, error: string): ProgressResult<T> => ({
  */
 const BOARD_CACHE_MS = 60_000;
 
-/** New players one address may create per window, and how long the window is. */
-const NEW_PLAYERS_PER_WINDOW = 6;
-const NEW_PLAYER_WINDOW_MS = 60 * 60_000;
+/**
+ * What one address may create per hour.
+ *
+ * Both mint something permanent-ish: a profile is a key that never goes away,
+ * and a room is a Durable Object. Rooms are the looser of the two because they
+ * clean themselves up when idle and because a group passing codes around
+ * genuinely makes several.
+ */
+const LIMITS = {
+  signup: { max: 6, windowMs: 60 * 60_000 },
+  room: { max: 30, windowMs: 60 * 60_000 },
+} as const;
+
+type LimitName = keyof typeof LIMITS;
 
 export class ProgressDO extends DurableObject<Record<string, never>> {
   /** Mutating RPCs can interleave at awaits; serialize them for exact-once ledgers. */
@@ -193,7 +204,7 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
    * lost if this object is ever evicted — which is fine, because eviction only
    * happens when nothing is going on, and a limiter matters under load.
    */
-  private recentSignups = new Map<string, number[]>();
+  private recentActions = new Map<string, number[]>();
 
   /**
    * Sorted score records per board, and public codes per player.
@@ -222,32 +233,36 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     return records;
   }
 
-  private signupAllowed(address: string): boolean {
+  private allowed(limit: LimitName, address: string): boolean {
     // No address is local development or a test; there is nobody to limit.
     if (!address) return true;
 
+    const { max, windowMs } = LIMITS[limit];
+    const bucket = `${limit}:${address}`;
     const now = Date.now();
-    const recent = (this.recentSignups.get(address) ?? []).filter(
-      (at) => now - at < NEW_PLAYER_WINDOW_MS,
-    );
-    if (recent.length >= NEW_PLAYERS_PER_WINDOW) {
-      this.recentSignups.set(address, recent);
+    const recent = (this.recentActions.get(bucket) ?? []).filter((at) => now - at < windowMs);
+
+    if (recent.length >= max) {
+      this.recentActions.set(bucket, recent);
       return false;
     }
 
     recent.push(now);
-    this.recentSignups.set(address, recent);
+    this.recentActions.set(bucket, recent);
 
     // Bounded upkeep: drop addresses whose window has passed entirely, so a
     // long-lived object does not accumulate a row per visitor it ever saw.
-    if (this.recentSignups.size > 5_000) {
-      for (const [key, times] of this.recentSignups) {
-        if (times.every((at) => now - at >= NEW_PLAYER_WINDOW_MS)) {
-          this.recentSignups.delete(key);
-        }
+    if (this.recentActions.size > 5_000) {
+      for (const [seen, times] of this.recentActions) {
+        if (times.every((at) => now - at >= windowMs)) this.recentActions.delete(seen);
       }
     }
     return true;
+  }
+
+  /** Asked before a room is minted, because a room is a Durable Object too. */
+  async allowRoomCreate(address: string): Promise<boolean> {
+    return this.allowed('room', address);
   }
 
   private async mutate<T>(operation: () => Promise<T>): Promise<T> {
@@ -265,7 +280,7 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
   }
 
   async createPlayer(name: string, address = ''): Promise<ProgressResult<CreatedPlayer>> {
-    if (!this.signupAllowed(address)) {
+    if (!this.allowed('signup', address)) {
       return fail(429, 'Too many new players from here. Try again later.');
     }
     return this.mutate(() => this.createPlayerLocked(name));

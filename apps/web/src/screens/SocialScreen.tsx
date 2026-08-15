@@ -21,6 +21,10 @@ export function SocialScreen({ onHome, onPlayer }: Props) {
   const [friendCode, setFriendCode] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // Kept apart from `message`: one is a notice about something you did, the
+  // other is the board failing to load, and they belong in different places.
+  const [boardError, setBoardError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -30,15 +34,15 @@ export function SocialScreen({ onHome, onPlayer }: Props) {
   useEffect(() => {
     let current = true;
     setBoard(null);
-    setMessage(null);
+    setBoardError(null);
     void progress
       .leaderboard(mode, scope)
       .then((next) => current && setBoard(next))
-      .catch((error: unknown) => current && setMessage(errorMessage(error)));
+      .catch((error: unknown) => current && setBoardError(errorMessage(error)));
     return () => {
       current = false;
     };
-  }, [mode, scope, progress.leaderboard, progress.profile?.clientId]);
+  }, [mode, scope, reloadKey, progress.leaderboard, progress.profile?.clientId]);
 
   const resetLabel = useMemo(
     () =>
@@ -225,7 +229,9 @@ export function SocialScreen({ onHome, onPlayer }: Props) {
           subtitle="Every week that has ever been played"
           board={board?.allTime ?? null}
           onPlayer={onPlayer}
-          loading={!board && !message}
+          loading={!board && !boardError}
+          error={boardError}
+          onRetry={() => setReloadKey((n) => n + 1)}
           emptyText={
             scope === 'friends'
               ? 'No friend has finished this mode yet.'
@@ -238,7 +244,9 @@ export function SocialScreen({ onHome, onPlayer }: Props) {
           subtitle={resetLabel ? `Resets ${resetLabel}` : 'Loading this week…'}
           board={board?.weekly ?? null}
           onPlayer={onPlayer}
-          loading={!board && !message}
+          loading={!board && !boardError}
+          error={boardError}
+          onRetry={() => setReloadKey((n) => n + 1)}
           emptyText={
             scope === 'friends'
               ? 'No friend has finished this mode this week yet.'

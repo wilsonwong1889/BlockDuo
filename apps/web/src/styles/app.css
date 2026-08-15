@@ -2023,3 +2023,18 @@ html.reduce-motion .wheel.spinning {
   font-size: 0.85rem;
   line-height: 1.5;
 }
+
+.board-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1.1rem 0.5rem;
+  text-align: center;
+}
+
+.board-error p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}

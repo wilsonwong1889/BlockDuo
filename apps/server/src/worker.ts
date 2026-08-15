@@ -155,6 +155,12 @@ export default {
 
     // POST /api/room — mint a room and return its code.
     if (url.pathname === '/api/room' && request.method === 'POST') {
+      // A room is a Durable Object, so minting one is not free either.
+      const address = request.headers.get('CF-Connecting-IP') ?? '';
+      if (!(await progressStub(env).allowRoomCreate(address))) {
+        return json({ error: 'Too many rooms from here. Try again later.' }, 429);
+      }
+
       // The mode is fixed here and never changes: a joiner inherits whatever
       // the host picked, and an unreadable body is simply the default.
       const body = await request.json().catch(() => null);

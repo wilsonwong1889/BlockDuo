@@ -1,7 +1,7 @@
 # BLOKDUO
 
-**Live: https://blokduo.wilsonwong1889.workers.dev**
-**Domain: blokduo.ca** — see [Custom domain](#custom-domain) to point it here.
+**Live: https://blokduo.ca** — also on `www.`, and still on
+https://blokduo.wilsonwong1889.workers.dev so older invite links keep working.
 
 An 8×8 block puzzle you can play solo, or two-up on one shared board, live.
 
@@ -197,31 +197,32 @@ there identifies a player: a day, a name and a number.
 
 The app builds every URL it uses — API calls, the room socket, invite links —
 from `window.location.origin`, so it follows whatever domain serves it. Pointing
-`blokduo.ca` here needs no code change; it is three steps outside the repository.
+`blokduo.ca` here needed no code change.
 
-1. **Add the zone to Cloudflare.** In the dashboard, add `blokduo.ca` as a site.
-   Cloudflare gives you two nameservers.
-2. **Move the nameservers at Spaceship.** In the domain's DNS settings, replace
-   the registrar's nameservers with Cloudflare's. Propagation is usually minutes
-   but is allowed to take up to 48 hours; Cloudflare emails when the zone is
-   active. Workers custom domains need the zone on Cloudflare — a plain CNAME at
-   another DNS host will not do.
-3. **Attach it to the Worker.** Either in the dashboard, under the Worker's
-   Settings → Domains & Routes → Add custom domain, or by uncommenting the
-   `routes` block in [`wrangler.jsonc`](wrangler.jsonc) and deploying. The
-   dashboard is the safer first move: it checks the zone exists, where wrangler
-   simply fails the deploy.
+**This is done.** `blokduo.ca` is a zone on the Cloudflare account, the
+nameservers moved at Spaceship on 2026-08-14, and both `blokduo.ca` and
+`www.blokduo.ca` are attached to the Worker by the `routes` block in
+[`wrangler.jsonc`](wrangler.jsonc). Cloudflare issued the certificates and
+manages the DNS rows itself — there is no origin server to point at, because the
+Worker *is* the origin, and nothing should be added beside those rows by hand.
 
-Cloudflare issues the certificate and creates the DNS record itself; there is no
-origin server to point at because the Worker *is* the origin.
+What the steps were, if another domain is ever added: add the zone in the
+dashboard, move the registrar's nameservers to the two Cloudflare gives you,
+then attach the domain. Workers custom domains need the zone on Cloudflare — a
+plain CNAME at another DNS host will not do. Attaching in the dashboard is the
+safer first move, because it checks the zone exists where wrangler simply fails
+the deploy. Budget hours, not minutes: a same-day registration waits on the
+registry publishing the delegation before any of it can take effect.
 
-The `workers.dev` address keeps working afterwards. Invite links already in
-circulation stay valid, and links made after the switch carry the new domain,
-because both are built from wherever the page was loaded.
+The `workers.dev` address keeps working, so invite links already in circulation
+stay valid, and links made after the switch carry the new domain — both are
+built from wherever the page was loaded. That survival is **not** automatic:
+giving a Worker `routes` turns its `workers.dev` address off unless
+`"workers_dev": true` says otherwise, which is why both wrangler configs set it
+explicitly. Removing it silently breaks every link on the old origin.
 
-Two things to change once it is live: the `Live:` line above, and the native
-build's `VITE_SERVER_URL`, which is the one place an origin is written down
-rather than discovered.
+The one origin written down rather than discovered is the native build's
+`VITE_SERVER_URL`.
 
 ## The app
 

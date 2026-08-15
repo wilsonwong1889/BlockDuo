@@ -19,6 +19,10 @@
     { "pattern": "blokduo.ca", "custom_domain": true },
     { "pattern": "www.blokduo.ca", "custom_domain": true }
   ],
+  // Explicit because adding routes otherwise turns the workers.dev address off,
+  // and duo invite links carry whatever origin the page was loaded from — so
+  // dropping it would kill links already in circulation.
+  "workers_dev": true,
   "assets": {
     "directory": "apps/web/dist"
   },

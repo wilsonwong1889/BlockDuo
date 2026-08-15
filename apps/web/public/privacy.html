@@ -9,6 +9,18 @@
       content="How BLOKDUO handles your data: what is stored, what advertising cookies do, and how to erase it."
     />
     <title>Privacy Policy — BLOKDUO</title>
+    <!--
+      Written out here rather than injected at build time like the game's own
+      page, because this is a static file Vite copies through untouched. Google
+      asks for the loader on every page, and this is the second of the two the
+      site actually has.
+    -->
+    <script
+      async
+      id="adsense-loader"
+      src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7652843006088695"
+      crossorigin="anonymous"
+    ></script>
     <style>
       :root {
         color-scheme: dark;

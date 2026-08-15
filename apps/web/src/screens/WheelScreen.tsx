@@ -7,6 +7,7 @@ import {
   POWER_COSTS,
 } from '@blokduo/engine';
 import { showRewardedAd } from '../ads';
+import { useFreeSpinWait } from '../game/useFreeSpinWait';
 import { useProgress } from '../progress/ProgressContext';
 
 interface Props {
@@ -113,6 +114,7 @@ export function WheelScreen({ onHome }: Props) {
   const affordable = freeSpin || coins >= WHEEL_COST_COINS;
 
   const adSpinsLeft = profile?.adSpinsLeft ?? 0;
+  const freeSpinWait = useFreeSpinWait(freeSpin);
   const marked = profile?.markedWedges ?? [];
   // Held back while the wheel is still turning: striking the wedge off the
   // moment the server answered would show the result before it landed.
@@ -282,14 +284,12 @@ export function WheelScreen({ onHome }: Props) {
           </button>
         )}
 
-        {!freeSpin && !affordable && (
+        {!freeSpin && (
           <p className="panel-note">
-            {(WHEEL_COST_COINS - coins).toLocaleString()} more coins, or come back tomorrow for a
-            free spin.
+            <span className="next-spin">Next free spin in {freeSpinWait}</span>
+            {!affordable &&
+              ` · ${(WHEEL_COST_COINS - coins).toLocaleString()} more coins to spin now`}
           </p>
-        )}
-        {!freeSpin && affordable && (
-          <p className="panel-note">Today&rsquo;s free spin is used. The next one is tomorrow.</p>
         )}
       </section>
 

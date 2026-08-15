@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { timeAgo } from '../src/time';
+import { formatWait, msUntilUtcMidnight, timeAgo } from '../src/time';
 
 const NOW = Date.parse('2026-08-14T12:00:00Z');
 const ago = (ms: number) => timeAgo(NOW - ms, NOW);
@@ -56,5 +56,37 @@ describe('timeAgo', () => {
 
   it('survives a nonsense timestamp instead of rendering NaN', () => {
     expect(timeAgo(Number.NaN, NOW)).toBe('unknown');
+  });
+});
+
+describe('waiting for the next free spin', () => {
+  it('counts to the next UTC midnight, not the local one', () => {
+    // Deliberately a time that is a different date in most of the world: the
+    // server stamps the spin with a UTC day, so a local midnight would tell
+    // half the players the wrong thing.
+    expect(msUntilUtcMidnight(Date.parse('2026-08-14T23:00:00Z'))).toBe(HOUR);
+    expect(msUntilUtcMidnight(Date.parse('2026-08-14T00:00:00Z'))).toBe(DAY);
+  });
+
+  it('rolls over month and year ends', () => {
+    expect(msUntilUtcMidnight(Date.parse('2026-08-31T22:30:00Z'))).toBe(90 * MINUTE);
+    expect(msUntilUtcMidnight(Date.parse('2026-12-31T23:00:00Z'))).toBe(HOUR);
+  });
+
+  it('never returns a negative wait', () => {
+    expect(msUntilUtcMidnight(Number.NaN)).toBe(0);
+  });
+
+  it('says the wait in hours and minutes', () => {
+    expect(formatWait(7 * HOUR + 23 * MINUTE)).toBe('7h 23m');
+    expect(formatWait(HOUR)).toBe('1h 0m');
+    expect(formatWait(23 * MINUTE)).toBe('23m');
+  });
+
+  it('does not pretend to a precision it is not showing', () => {
+    // Anything under a minute would otherwise read as "0m", which looks stuck.
+    expect(formatWait(30_000)).toBe('under a minute');
+    expect(formatWait(0)).toBe('any moment');
+    expect(formatWait(-1)).toBe('any moment');
   });
 });

@@ -3,6 +3,7 @@ import { unlockAudio } from '../audio/sfx';
 import { AdSlot } from '../components/AdSlot';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { MovePrompt } from '../components/MovePrompt';
+import { useFreeSpinWait } from '../game/useFreeSpinWait';
 import { updateAppSettings } from '../preferences';
 import { useProgress } from '../progress/ProgressContext';
 import { loadAppSettings, loadBest, loadClassicGame } from '../storage';
@@ -34,6 +35,7 @@ export function HomeScreen({
   // somebody walked into the room.
   const [sound, setSound] = useState(() => loadAppSettings().sound);
   const { profile } = useProgress();
+  const freeSpinWait = useFreeSpinWait(profile?.freeSpinAvailable ?? false);
 
   // Read once on mount, not on every render: loadClassicGame parses a whole
   // board, and opening either panel would pay for it again. Navigating swaps
@@ -139,9 +141,14 @@ export function HomeScreen({
         <span className="home-wheel-copy">
           <strong>Daily wheel</strong>
           <small>
+            {/* Whatever they can act on now comes first. A countdown shown
+                while adverts are still available reads as "come back later"
+                to somebody who could spin this second. */}
             {profile?.freeSpinAvailable
               ? 'Free spin ready'
-              : `${profile?.adSpinsLeft ?? 0} advert spin${(profile?.adSpinsLeft ?? 0) === 1 ? '' : 's'} left today`}
+              : (profile?.adSpinsLeft ?? 0) > 0
+                ? `${profile?.adSpinsLeft} advert spin${profile?.adSpinsLeft === 1 ? '' : 's'} left today`
+                : `Next free spin in ${freeSpinWait}`}
           </small>
         </span>
         <span className="gem-pill">◈ {profile?.gems?.toLocaleString() ?? '—'}</span>

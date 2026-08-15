@@ -28,6 +28,18 @@ const SEGMENT_COLOURS = [
   'rgba(244, 63, 94, 0.95)',
 ];
 
+/** How many wedges each common prize is drawn as. */
+const REPEATS = 5;
+
+/**
+ * A prize rarer than this is drawn once.
+ *
+ * Splitting a one-percent slice five ways would give five wedges under a
+ * degree wide, which is not a wheel, it is a hairline. It stays a single
+ * sliver, which is also the honest picture of its odds.
+ */
+const RARE_SHARE = 0.05;
+
 interface Wedge {
   gems: number;
   /** Degrees clockwise from the top. */
@@ -35,27 +47,62 @@ interface Wedge {
   size: number;
   centre: number;
   colour: string;
+  rare: boolean;
 }
+
+/** The one prize drawn as a single wedge, or null if none is rare enough. */
+const RARE_GEMS =
+  WHEEL_SEGMENTS.find((s) => s.weight / WHEEL_TOTAL_WEIGHT < RARE_SHARE)?.gems ?? null;
 
 /**
  * The prizes as wedges, sized by their real odds.
  *
- * Drawn from the same table the server pays out of, so the 1-in-100 wedge is
- * genuinely a sliver — a wheel whose slices do not match its odds is a wheel
- * that lies about them.
+ * Each common prize is drawn as several small wedges rather than one quarter
+ * of the wheel, which is what a wheel actually looks like and gives it
+ * something to sweep past. The odds are untouched: five wedges at a fifth of
+ * the weight is the same twenty-five percent, and the rare one keeps its
+ * single sliver.
+ *
+ * Laid out by rotating the order each pass, so the same prize never sits next
+ * to itself — two adjacent wedges of one colour read as a single fat one and
+ * undo the point of splitting them.
  */
 const WEDGES: Wedge[] = (() => {
+  const common = WHEEL_SEGMENTS.map((segment, index) => ({
+    gems: segment.gems,
+    weight: segment.weight,
+    colour: SEGMENT_COLOURS[index % SEGMENT_COLOURS.length],
+  })).filter((part) => part.gems !== RARE_GEMS);
+
+  const order: typeof common = [];
+  for (let pass = 0; pass < REPEATS; pass++) {
+    for (let i = 0; i < common.length; i++) {
+      order.push(common[(i + pass) % common.length]);
+    }
+  }
+
+  const rareIndex = WHEEL_SEGMENTS.findIndex((s) => s.gems === RARE_GEMS);
+  if (RARE_GEMS !== null) {
+    order.splice(Math.floor(order.length / 3), 0, {
+      gems: RARE_GEMS,
+      weight: WHEEL_SEGMENTS[rareIndex].weight,
+      colour: SEGMENT_COLOURS[rareIndex % SEGMENT_COLOURS.length],
+    });
+  }
+
   let acc = 0;
-  return WHEEL_SEGMENTS.map((segment, index) => {
-    const size = (segment.weight / WHEEL_TOTAL_WEIGHT) * 360;
-    const start = acc;
+  return order.map((part) => {
+    const rare = part.gems === RARE_GEMS;
+    const size = ((part.weight / (rare ? 1 : REPEATS)) / WHEEL_TOTAL_WEIGHT) * 360;
+    const startAt = acc;
     acc += size;
     return {
-      gems: segment.gems,
-      start,
+      gems: part.gems,
+      start: startAt,
       size,
-      centre: start + size / 2,
-      colour: SEGMENT_COLOURS[index % SEGMENT_COLOURS.length],
+      centre: startAt + size / 2,
+      colour: part.colour,
+      rare,
     };
   });
 })();
@@ -66,7 +113,10 @@ const WHEEL_GRADIENT = `conic-gradient(from 0deg, ${WEDGES.map(
 
 /** Where the wheel must stop for `gems` to sit under the pointer. */
 function restingAngle(from: number, gems: number): number {
-  const wedge = WEDGES.find((w) => w.gems === gems) ?? WEDGES[0];
+  // Any of the prize's wedges will do, and picking between them means two
+  // identical wins do not stop in the same place.
+  const candidates = WEDGES.filter((w) => w.gems === gems);
+  const wedge = candidates[Math.floor(Math.random() * candidates.length)] ?? WEDGES[0];
   const current = ((from % 360) + 360) % 360;
   // The pointer is at the top, so the wedge's centre has to come round to 0.
   const wanted = (360 - wedge.centre) % 360;
@@ -164,11 +214,11 @@ export function WheelScreen({ onHome }: Props) {
                 : 'none',
             }}
           >
-            {WEDGES.map((wedge) => (
+            {WEDGES.map((wedge, index) => (
               <span
-                className="wheel-label"
-                key={wedge.gems}
-                style={{ transform: `rotate(${wedge.centre}deg) translateY(-3.35rem)` }}
+                className={`wheel-label${wedge.rare ? ' rare' : ''}`}
+                key={`${wedge.gems}-${index}`}
+                style={{ transform: `rotate(${wedge.centre}deg) translateY(-3.5rem)` }}
               >
                 {wedge.gems}
               </span>

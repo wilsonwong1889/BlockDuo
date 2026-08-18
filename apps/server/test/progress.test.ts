@@ -1,6 +1,7 @@
 import { SELF, env, runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import {
+  ALL_TIME_LEADERBOARD_SIZE,
   applyMove,
   coinReward,
   decodeState,
@@ -447,6 +448,100 @@ describe('progress friendships', () => {
     }
   });
 
+  it('caps the all-time board at a hundred, and reports a place past it without a row', async () => {
+    const player = await createPlayer(`Deep ${crypto.randomUUID().slice(0, 8)}`);
+    const game = completedClassic(gameSeed(0x0d33f01));
+    const claim = await post<ClaimResult>('/api/progress/classic', {
+      ...player.identity,
+      seed: game.state.seed,
+      moves: game.moves,
+      ranked: true,
+    });
+    expect(claim.response.status).toBe(200);
+
+    // Enough better scores to bury this one well past the board's last row.
+    // Written straight to storage because playing 150 games would take longer
+    // than the whole suite and prove nothing extra: the board reads records.
+    const ahead = 150;
+    const stub = env.PROGRESS.get(env.PROGRESS.idFromName('global'));
+    await runInDurableObject(stub, async (instance, state) => {
+      const records: Record<string, unknown> = {};
+      for (let i = 0; i < ahead; i++) {
+        const id = `seeded_${crypto.randomUUID()}`;
+        records[`score:alltime:classic:${id}`] = {
+          id,
+          participantIds: [id],
+          names: [`Seeded ${i}`],
+          score: game.state.score + ahead - i,
+          moveCount: game.state.moveCount,
+          mode: 'classic',
+          achievedAt: Date.now(),
+        };
+      }
+      await state.storage.put(records);
+      // The sorted board is cached for a minute; these records are new to it.
+      (instance as unknown as { boards: Map<string, unknown> }).boards.clear();
+    });
+
+    const board = await post<LeaderboardView>('/api/progress/leaderboard', {
+      ...player.identity,
+      mode: 'classic',
+      scope: 'global',
+    });
+    expect(board.body.allTime.entries).toHaveLength(ALL_TIME_LEADERBOARD_SIZE);
+    expect(board.body.allTime.entries.at(-1)?.rank).toBe(ALL_TIME_LEADERBOARD_SIZE);
+    // Buried, so the board does not draw them anywhere in it.
+    expect(board.body.allTime.entries.some((entry) => entry.isYou)).toBe(false);
+    expect(board.body.allTime).not.toHaveProperty('self');
+
+    // The place itself is still real, and counted over every record rather
+    // than over the hundred that are drawn.
+    const place = board.body.allTime.selfRank;
+    expect(place).toBeGreaterThan(ALL_TIME_LEADERBOARD_SIZE);
+
+    // And it is the number the profile shows, which is where a player reads it.
+    const response = await SELF.fetch(
+      `${ORIGIN}/api/progress/player/${player.profile.friendCode}`,
+    );
+    const body = (await response.json()) as PublicProfile;
+    expect(body.ranks.classic).toBe(place);
+  });
+
+  it('keeps an all-time record for good, week after week', async () => {
+    const player = await createPlayer(`Forever ${crypto.randomUUID().slice(0, 8)}`);
+    const game = completedClassic(gameSeed(0x0f04e7e));
+    await post<ClaimResult>('/api/progress/classic', {
+      ...player.identity,
+      seed: game.state.seed,
+      moves: game.moves,
+      ranked: true,
+    });
+
+    // What a rolled-over week looks like: this week's records are gone from
+    // storage, because the week they were filed under is not this one any more.
+    const stub = env.PROGRESS.get(env.PROGRESS.idFromName('global'));
+    await runInDurableObject(stub, async (instance, state) => {
+      const weekly = [...(await state.storage.list<unknown>({ prefix: 'score:' })).keys()].filter(
+        (key) => !key.startsWith('score:alltime:'),
+      );
+      await state.storage.delete(weekly);
+      (instance as unknown as { boards: Map<string, unknown> }).boards.clear();
+    });
+
+    const board = await post<LeaderboardView>('/api/progress/leaderboard', {
+      ...player.identity,
+      mode: 'classic',
+      scope: 'global',
+    });
+    expect(board.body.weekly.entries.some((entry) => entry.name === player.profile.name)).toBe(
+      false,
+    );
+    // The name is still on the permanent board: nothing expires it.
+    expect(
+      board.body.allTime.entries.some((entry) => entry.name === player.profile.name),
+    ).toBe(true);
+  });
+
   it('publishes a profile anyone can read, with server-counted totals', async () => {
     const player = await createPlayer(`Public ${crypto.randomUUID().slice(0, 8)}`);
     const game = completedClassic(gameSeed(0x0bacc11));
@@ -479,6 +574,9 @@ describe('progress friendships', () => {
     });
     expect(body.stats.lastPlayedAt).toBeGreaterThan(body.joinedAt - 1);
     expect(body.stats.lastPlayedAt).toBeLessThanOrEqual(Date.now());
+    // One ranked Classic game, so a Classic place and no Duo one.
+    expect(body.ranks.classic).toBeGreaterThan(0);
+    expect(body.ranks.duo).toBeNull();
     // Nothing that could be used to act as this player may appear here.
     expect(JSON.stringify(body)).not.toContain(player.identity.clientId);
     expect(JSON.stringify(body)).not.toContain(player.identity.token);
@@ -1019,8 +1117,9 @@ describe('Duo progression settlement', () => {
         mode: 'duo',
         isYou: true,
       });
-      // Already in the visible list, so there is no pinned copy to draw twice.
-      expect(board.self).toBeNull();
+      // Inside the visible list, so the rank is the row's own place.
+      expect(board.selfRank).toBe(pairEntries[0].rank);
+      expect(board).not.toHaveProperty('self');
     }
   }, 10_000);
 

@@ -4,6 +4,7 @@ import {
   ALL_TIME_LEADERBOARD_SIZE,
   coinReward,
   cleanName,
+  FALLBACK_NAME,
   isAllowedName,
   isRankedTranscript,
   isSupportedGameSeed,
@@ -251,18 +252,15 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
   private recentActions = new Map<string, number[]>();
 
   /**
-   * Sorted score records per board, and public codes per player.
+   * Sorted score records per board.
    *
-   * Both are in memory: losing them costs one rescan, and keeping them in
-   * storage would mean writing on every read. Friend codes never change once
-   * issued, so those need no expiry at all — only a cap, so a very long-lived
-   * object cannot grow a row for every player it has ever shown.
+   * In memory rather than in storage: losing it costs one rescan, and keeping
+   * it in storage would mean writing on every read.
    */
   private boards = new Map<string, { at: number; records: RankedScore[] }>();
 
   /** The day whose metric sweep has already run on this object. */
   private sweptDay = '';
-  private codes = new Map<string, string>();
 
   private async sortedBoard(window: string, mode: GameMode): Promise<RankedScore[]> {
     const key = `${window}:${mode}`;
@@ -552,9 +550,29 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       );
 
       const shown = filtered.slice(0, size);
+      // Read for the visible rows only, and read rather than stored on the
+      // record, so every score already on the board gets both without
+      // migrating anything.
+      const identities = await this.identitiesFor(
+        shown.flatMap((record) => record.participantIds),
+      );
+
+      /**
+       * Who to put on the row: the name the player goes by now.
+       *
+       * The record keeps the name that set it, and everybody starts out called
+       * "Player" — so a board drawn from the records is a board of people who
+       * had not picked a name yet. The stored name is only the fallback, for a
+       * profile that no longer exists to ask.
+       */
+      const displayName = (record: RankedScore) =>
+        record.participantIds
+          .map((id, seat) => identities.get(id)?.name ?? record.names[seat] ?? FALLBACK_NAME)
+          .join(' + ');
+
       const entries = shown.map<LeaderboardEntry>((record, index) => ({
         rank: index + 1,
-        name: record.names.join(' + '),
+        name: displayName(record),
         score: record.score,
         moveCount: record.moveCount,
         mode: record.mode,
@@ -565,11 +583,8 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
         ),
       }));
 
-      // Resolved for the visible rows only, and read rather than stored on the
-      // record, so every score already on the board gets one without migrating.
-      const codes = await this.friendCodesFor(shown.flatMap((record) => record.participantIds));
       entries.forEach((entry, index) => {
-        const resolved = shown[index].participantIds.map((id) => codes.get(id));
+        const resolved = shown[index].participantIds.map((id) => identities.get(id)?.friendCode);
         if (resolved.every((code): code is string => !!code)) entry.friendCodes = resolved;
       });
 
@@ -1022,28 +1037,33 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     await this.backfillStats();
   }
 
-  /** clientId to public code, batched, for the rows actually being shown. */
-  private async friendCodesFor(clientIds: string[]): Promise<Map<string, string>> {
+  /**
+   * Who the rows being shown actually are, right now.
+   *
+   * Read every time rather than remembered, because a name is not fixed the
+   * way a friend code is: a player renames and every board they are on has to
+   * say so. It is one batched read of at most a hundred profiles per board,
+   * which is what a leaderboard costs.
+   */
+  private async identitiesFor(
+    clientIds: string[],
+  ): Promise<Map<string, { friendCode: string; name: string }>> {
     const unique = [...new Set(clientIds)];
-    const codes = new Map<string, string>();
-    const missing = unique.filter((id) => {
-      const known = this.codes.get(id);
-      if (known) codes.set(id, known);
-      return !known;
-    });
+    const identities = new Map<string, { friendCode: string; name: string }>();
 
     // Durable Object storage reads at most 128 keys at a time.
-    for (let i = 0; i < missing.length; i += MAX_PUT_KEYS) {
-      const slice = missing.slice(i, i + MAX_PUT_KEYS);
+    for (let i = 0; i < unique.length; i += MAX_PUT_KEYS) {
+      const slice = unique.slice(i, i + MAX_PUT_KEYS);
       const found = await this.ctx.storage.get<StoredProfile>(slice.map(profileKey));
       for (const profile of found.values()) {
         if (!profile?.clientId) continue;
-        codes.set(profile.clientId, profile.friendCode);
-        if (this.codes.size > 50_000) this.codes.clear();
-        this.codes.set(profile.clientId, profile.friendCode);
+        identities.set(profile.clientId, {
+          friendCode: profile.friendCode,
+          name: cleanName(profile.name),
+        });
       }
     }
-    return codes;
+    return identities;
   }
 
   private async authenticateRecord(

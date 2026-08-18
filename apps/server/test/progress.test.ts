@@ -448,6 +448,34 @@ describe('progress friendships', () => {
     }
   });
 
+  it('shows the name a player goes by now, not the one that set the score', async () => {
+    // Everybody starts out called "Player": the client sends the default until
+    // somebody picks something, so a first score is set under it.
+    const player = await createPlayer('Player');
+    expect(player.profile.name).toBe('Player');
+
+    const game = completedClassic(gameSeed(0x0a1a5e5));
+    await post<ClaimResult>('/api/progress/classic', {
+      ...player.identity,
+      seed: game.state.seed,
+      moves: game.moves,
+      ranked: true,
+    });
+
+    const chosen = `Renamed ${crypto.randomUUID().slice(0, 8)}`;
+    expect((await getProfile(player, chosen)).name).toBe(chosen);
+
+    const board = await post<LeaderboardView>('/api/progress/leaderboard', {
+      ...player.identity,
+      mode: 'classic',
+      scope: 'global',
+    });
+    for (const half of [board.body.weekly, board.body.allTime]) {
+      const mine = half.entries.find((entry) => entry.isYou);
+      expect(mine?.name).toBe(chosen);
+    }
+  });
+
   it('caps the all-time board at a hundred, and reports a place past it without a row', async () => {
     const player = await createPlayer(`Deep ${crypto.randomUUID().slice(0, 8)}`);
     const game = completedClassic(gameSeed(0x0d33f01));

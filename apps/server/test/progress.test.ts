@@ -448,7 +448,7 @@ describe('progress friendships', () => {
     }
   });
 
-  it('shows the name a player goes by now, not the one that set the score', async () => {
+  it('lists an unnamed player by code, and by their name once they pick one', async () => {
     // Everybody starts out called "Player": the client sends the default until
     // somebody picks something, so a first score is set under it.
     const player = await createPlayer('Player');
@@ -461,6 +461,17 @@ describe('progress friendships', () => {
       moves: game.moves,
       ranked: true,
     });
+
+    // Unnamed, so the row carries the code that tells one "Player" from the
+    // next rather than a column of identical names.
+    const before = await post<LeaderboardView>('/api/progress/leaderboard', {
+      ...player.identity,
+      mode: 'classic',
+      scope: 'global',
+    });
+    expect(before.body.allTime.entries.find((entry) => entry.isYou)?.name).toBe(
+      `Player ${player.profile.friendCode}`,
+    );
 
     const chosen = `Renamed ${crypto.randomUUID().slice(0, 8)}`;
     expect((await getProfile(player, chosen)).name).toBe(chosen);

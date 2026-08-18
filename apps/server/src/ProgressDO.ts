@@ -6,6 +6,7 @@ import {
   cleanName,
   FALLBACK_NAME,
   isAllowedName,
+  listedName,
   isRankedTranscript,
   isSupportedGameSeed,
   POWER_COSTS,
@@ -558,7 +559,8 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       );
 
       /**
-       * Who to put on the row: the name the player goes by now.
+       * Who to put on the row: the name the player goes by now, and their code
+       * when they still go by the default one.
        *
        * The record keeps the name that set it, and everybody starts out called
        * "Player" — so a board drawn from the records is a board of people who
@@ -567,7 +569,12 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
        */
       const displayName = (record: RankedScore) =>
         record.participantIds
-          .map((id, seat) => identities.get(id)?.name ?? record.names[seat] ?? FALLBACK_NAME)
+          .map((id, seat) => {
+            const identity = identities.get(id);
+            return identity
+              ? listedName(identity.name, identity.friendCode)
+              : record.names[seat] ?? FALLBACK_NAME;
+          })
           .join(' + ');
 
       const entries = shown.map<LeaderboardEntry>((record, index) => ({

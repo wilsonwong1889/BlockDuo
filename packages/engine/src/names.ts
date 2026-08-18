@@ -124,3 +124,21 @@ export function cleanName(value: unknown): string {
   if (!cleaned) return FALLBACK_NAME;
   return isAllowedName(cleaned) ? cleaned : FALLBACK_NAME;
 }
+
+/**
+ * What to call a player in a list of other players.
+ *
+ * Everybody starts out as the fallback name, so a leaderboard drawn from names
+ * alone is a column of identical "Player" rows that says nothing about who is
+ * who. Their public code is already theirs and already shown all over the game,
+ * so an unnamed player is listed as "Player BD-K3M9XQ2P" — one row telling
+ * itself apart from the next, without inventing a name nobody chose.
+ *
+ * A player who has picked a name keeps it exactly; the code is only ever added
+ * to the fallback.
+ */
+export function listedName(name: unknown, friendCode: string): string {
+  const cleaned = cleanName(name);
+  const code = typeof friendCode === 'string' ? friendCode.trim() : '';
+  return cleaned === FALLBACK_NAME && code ? `${FALLBACK_NAME} ${code}` : cleaned;
+}

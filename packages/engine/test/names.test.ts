@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanName, FALLBACK_NAME, isAllowedName, normalizeName } from '../src/names';
+import { cleanName, FALLBACK_NAME, isAllowedName, listedName, normalizeName } from '../src/names';
 
 describe('name moderation', () => {
   it('allows ordinary names', () => {
@@ -75,5 +75,23 @@ describe('normalizeName', () => {
   it('folds case and lookalikes', () => {
     expect(normalizeName('H3LL0')).toBe('hello');
     expect(normalizeName('$T4R')).toBe('star');
+  });
+});
+
+describe('listedName', () => {
+  it('tells one unnamed player from the next by their code', () => {
+    expect(listedName('Player', 'BD-K3M9XQ2P')).toBe('Player BD-K3M9XQ2P');
+    // A name that was refused, or was never there at all, is the fallback too.
+    expect(listedName('', 'BD-K3M9XQ2P')).toBe('Player BD-K3M9XQ2P');
+    expect(listedName('fuck', 'BD-K3M9XQ2P')).toBe('Player BD-K3M9XQ2P');
+  });
+
+  it('leaves a chosen name exactly as it is', () => {
+    expect(listedName('Ada', 'BD-K3M9XQ2P')).toBe('Ada');
+    expect(listedName('Player One', 'BD-K3M9XQ2P')).toBe('Player One');
+  });
+
+  it('says the plain fallback when there is no code to add', () => {
+    expect(listedName('Player', '')).toBe(FALLBACK_NAME);
   });
 });

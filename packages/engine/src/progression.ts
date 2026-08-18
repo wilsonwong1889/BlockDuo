@@ -75,12 +75,29 @@ export const EMPTY_PLAYER_STATS: PlayerStats = {
   lastPlayedAt: null,
 };
 
+/**
+ * Where a player stands on each all-time board.
+ *
+ * Counted across every ranked score ever set rather than across the visible
+ * top of the board, so 1,240th is a real place and is reported as one. Null in
+ * a mode the player has never set a ranked score in.
+ */
+export interface LeaderboardPlaces {
+  classic: number | null;
+  duo: number | null;
+}
+
 /** What anyone may see about a player. Deliberately no identifiers to act with. */
 export interface PublicProfile {
   friendCode: string;
   name: string;
   joinedAt: number;
   stats: PlayerStats;
+  /**
+   * All-time place per mode. This is the only place a rank past the board's
+   * last row is shown: the board itself stays the best hundred names.
+   */
+  ranks: LeaderboardPlaces;
 }
 
 export function averageGameScore(stats: PlayerStats): number {
@@ -145,6 +162,16 @@ export function utcDayKey(now: number | Date = Date.now()): string {
 
 export type LeaderboardScope = 'global' | 'friends';
 
+/**
+ * How many places each board shows.
+ *
+ * All time is a hall of fame: a hundred names, and once a score is on it, it
+ * stays there for as long as nobody beats it — records are never expired or
+ * swept. A week is a shorter story, so it stays at fifty.
+ */
+export const ALL_TIME_LEADERBOARD_SIZE = 100;
+export const WEEKLY_LEADERBOARD_SIZE = 50;
+
 export interface LeaderboardEntry {
   rank: number;
   name: string;
@@ -163,14 +190,13 @@ export interface LeaderboardEntry {
 
 export interface LeaderboardBoard {
   entries: LeaderboardEntry[];
-  /** Rank across the whole board, which can be past the visible entries. */
-  selfRank: number | null;
   /**
-   * Your own row when it falls outside `entries`, so a player ranked past the
-   * cut still sees their score rather than only a number they cannot place.
-   * Null when you are already in the visible list, or have no score at all.
+   * Your place across the whole board, which is usually past the last visible
+   * entry. The board draws its top places and nothing else — a player ranked
+   * 1,240th reads that number here and on their profile rather than being
+   * pinned in among the best.
    */
-  self: LeaderboardEntry | null;
+  selfRank: number | null;
 }
 
 /**

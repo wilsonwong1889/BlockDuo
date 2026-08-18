@@ -36,7 +36,11 @@ export function Leaderboard({
           <h2>{title}</h2>
           <p>{subtitle}</p>
         </div>
-        {board?.selfRank && <span className="rank-pill">You #{board.selfRank}</span>}
+        {/* Your place, which is very often past the last row shown. The number
+            is the whole of it — the board below stays the top of the board. */}
+        {board?.selfRank && (
+          <span className="rank-pill">You #{board.selfRank.toLocaleString()}</span>
+        )}
       </div>
 
       <div className="leaderboard-list" aria-live="polite">
@@ -61,16 +65,6 @@ export function Leaderboard({
         {board?.entries.map((entry) => (
           <Row entry={entry} onPlayer={onPlayer} key={`${entry.rank}-${entry.name}`} />
         ))}
-
-        {/* Ranked past the visible cut: show the row, not just the number. */}
-        {board?.self && (
-          <>
-            <div className="leader-gap" aria-hidden>
-              ⋯
-            </div>
-            <Row entry={board.self} onPlayer={onPlayer} />
-          </>
-        )}
       </div>
     </section>
   );
@@ -108,9 +102,9 @@ function Row({
       <span className="leader-pieces">{entry.moveCount} pieces</span>
       <strong className="leader-score">{entry.score.toLocaleString()}</strong>
       {openable && (
-        // "View" rather than "View profile": fifty rows of the longer label
-        // crowds out the score on a phone. The full wording is in the accessible
-        // name, which is what a screen reader announces.
+        // "View" rather than "View profile": a hundred rows of the longer
+        // label crowds out the score on a phone. The full wording is in the
+        // accessible name, which is what a screen reader announces.
         <button
           type="button"
           className="view-profile"

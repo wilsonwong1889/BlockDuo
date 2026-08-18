@@ -1654,16 +1654,6 @@ html.reduce-motion .home-wheel.ready .home-wheel-dial {
   color: var(--muted);
 }
 
-/* The break between the visible top of the board and your own row below it. */
-.leader-gap {
-  color: var(--muted);
-  font-size: 0.8rem;
-  letter-spacing: 0.3em;
-  line-height: 0.7;
-  text-align: center;
-  opacity: 0.5;
-}
-
 .board-section + .board-section {
   margin-top: 1.4rem;
   padding-top: 0.4rem;

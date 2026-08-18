@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
-import { averageGameScore, type PublicProfile } from '@blokduo/engine';
+import {
+  ALL_TIME_LEADERBOARD_SIZE,
+  averageGameScore,
+  type LeaderboardPlaces,
+  type PublicProfile,
+} from '@blokduo/engine';
 import { SettingsPanel } from '../components/SettingsPanel';
 import { updateAppSettings } from '../preferences';
 import { fetchPublicProfile } from '../progress/api';
@@ -15,6 +20,19 @@ interface Props {
 
 const joinedLabel = (at: number) =>
   new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(at);
+
+/**
+ * The all-time places worth drawing, in board order.
+ *
+ * A mode with no ranked score in it is dropped rather than shown as a dash: a
+ * player who has only ever played Duo has no Classic place, which is not the
+ * same as being last in it.
+ */
+const placeRows = (ranks: LeaderboardPlaces | undefined) =>
+  [
+    { label: 'Ranked Classic', place: ranks?.classic ?? null },
+    { label: 'Duo teams', place: ranks?.duo ?? null },
+  ].filter((row): row is { label: string; place: number } => row.place !== null);
 
 export function ProfileScreen({ code, onHome }: Props) {
   const { profile: me } = useProgress();
@@ -66,6 +84,7 @@ export function ProfileScreen({ code, onHome }: Props) {
   };
 
   const stats = player?.stats;
+  const places = placeRows(player?.ranks);
   // A zero is dropped rather than shown, because for a player who was here
   // before totals were counted it means "not known" and not "none" — and an
   // average of 0 printed beside a best game of 345 just reads as broken. Games
@@ -140,6 +159,35 @@ export function ProfileScreen({ code, onHome }: Props) {
               </div>
             </section>
           )}
+
+          <section className="leaderboard-card">
+            <div className="leaderboard-heading">
+              <div>
+                <h2>Ranked place</h2>
+                <p>
+                  Across every ranked score ever set, not just the top{' '}
+                  {ALL_TIME_LEADERBOARD_SIZE} the board shows.
+                </p>
+              </div>
+            </div>
+
+            {places.length === 0 ? (
+              <p className="empty-board">
+                {isMe
+                  ? 'Finish a Ranked game to take a place on the all-time board.'
+                  : 'No ranked game yet, so no place on the all-time board.'}
+              </p>
+            ) : (
+              <div className="lifetime-stat-grid">
+                {places.map((row) => (
+                  <div className="lifetime-stat" key={row.label}>
+                    <strong>#{row.place.toLocaleString()}</strong>
+                    <span>{row.label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
 
           <section className="leaderboard-card">
             <div className="leaderboard-heading">

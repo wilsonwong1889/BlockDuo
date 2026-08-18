@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
   actionKind,
+  ALL_TIME_LEADERBOARD_SIZE,
   coinReward,
   cleanName,
   isAllowedName,
@@ -21,6 +22,7 @@ import {
   type FriendProfile,
   type GameMode,
   type LeaderboardEntry,
+  type LeaderboardPlaces,
   type LeaderboardScope,
   type LeaderboardView,
   type GameAction,
@@ -30,11 +32,11 @@ import {
   type ProgressProfile,
   type PublicProfile,
   type WheelResult,
+  WEEKLY_LEADERBOARD_SIZE,
 } from '@blokduo/engine';
 
 const FRIEND_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const MAX_CLASSIC_MOVES = 2_000;
-const LEADERBOARD_LIMIT = 50;
 
 export interface ProgressCredentials {
   clientId: string;
@@ -133,7 +135,14 @@ interface RankedScore {
   achievedAt: number;
 }
 
-/** The window a record is filed under. Weeks use their Monday's date. */
+/**
+ * The window a record is filed under. Weeks use their Monday's date.
+ *
+ * All-time records are permanent: one key per player (or per Duo pair) that is
+ * only ever overwritten by that same player beating it, and never expired,
+ * swept or trimmed. The board is capped at what it *shows*, not at what it
+ * keeps, so a name on it stays on it until somebody plays better.
+ */
 const ALL_TIME = 'alltime';
 
 /** Set once the pre-existing weeks have been folded into the all-time window. */
@@ -207,8 +216,8 @@ const fail = <T>(status: number, error: string): ProgressResult<T> => ({
  *
  * The scan is the expensive part and it is identical for everyone looking at
  * the same board, so it is done once a minute rather than once a reader. A
- * score set inside that minute appears at the end of it, which is the trade
- * being made deliberately: a leaderboard is not a live scoreboard.
+ * score set inside that minute is folded into what is held rather than waiting
+ * for it to lapse, so the cache costs a rescan and not accuracy.
  */
 const BOARD_CACHE_MS = 60_000;
 
@@ -528,19 +537,22 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     const week = weekWindow();
     const allowed = new Set([profile.clientId, ...profile.friendIds]);
 
-    const board = async (window: string) => {
+    const board = async (window: string, size: number) => {
       const records = await this.sortedBoard(window, mode);
       const filtered =
         scope === 'friends'
           ? records.filter((record) => record.participantIds.some((id) => allowed.has(id)))
           : records;
-      // Found before the visible slice, so your rank is still reported when you
-      // are further down the board than it shows.
+      // Counted over the whole board rather than the slice being sent, so a
+      // player far below the last row still gets their real place back. The row
+      // itself is not sent: below the cut is below the cut, and the number is
+      // what the profile shows.
       const selfIndex = filtered.findIndex((record) =>
         record.participantIds.includes(profile.clientId),
       );
 
-      const toEntry = (record: RankedScore, index: number): LeaderboardEntry => ({
+      const shown = filtered.slice(0, size);
+      const entries = shown.map<LeaderboardEntry>((record, index) => ({
         rank: index + 1,
         name: record.names.join(' + '),
         score: record.score,
@@ -551,35 +563,44 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
         isFriend: record.participantIds.some(
           (id) => id !== profile.clientId && profile.friendIds.includes(id),
         ),
-      });
-
-      const entries = filtered.slice(0, LEADERBOARD_LIMIT).map(toEntry);
-      // Sent separately only when it is past the cut; inside the list it is
-      // already there, and sending it twice would draw it twice.
-      const self =
-        selfIndex >= LEADERBOARD_LIMIT ? toEntry(filtered[selfIndex], selfIndex) : null;
+      }));
 
       // Resolved for the visible rows only, and read rather than stored on the
       // record, so every score already on the board gets one without migrating.
-      const shown = [...filtered.slice(0, LEADERBOARD_LIMIT)];
-      if (selfIndex >= LEADERBOARD_LIMIT) shown.push(filtered[selfIndex]);
       const codes = await this.friendCodesFor(shown.flatMap((record) => record.participantIds));
-      const attach = (entry: LeaderboardEntry, record: RankedScore) => {
-        const resolved = record.participantIds.map((id) => codes.get(id));
+      entries.forEach((entry, index) => {
+        const resolved = shown[index].participantIds.map((id) => codes.get(id));
         if (resolved.every((code): code is string => !!code)) entry.friendCodes = resolved;
-      };
-      entries.forEach((entry, index) => attach(entry, filtered[index]));
-      if (self) attach(self, filtered[selfIndex]);
+      });
 
-      return { entries, selfRank: selfIndex < 0 ? null : selfIndex + 1, self };
+      return { entries, selfRank: selfIndex < 0 ? null : selfIndex + 1 };
     };
 
     return ok({
       scope,
       week,
-      allTime: await board(ALL_TIME),
-      weekly: await board(week.key),
+      allTime: await board(ALL_TIME, ALL_TIME_LEADERBOARD_SIZE),
+      weekly: await board(week.key, WEEKLY_LEADERBOARD_SIZE),
     });
+  }
+
+  /**
+   * Where one player stands on each all-time board.
+   *
+   * Every record is counted, not only the hundred the board draws, so a place
+   * of 1,240th is a real position rather than "off the board". Both modes are
+   * read from the same cached scan the leaderboard itself uses.
+   */
+  private async allTimePlaces(clientId: string): Promise<LeaderboardPlaces> {
+    const placeIn = async (mode: GameMode): Promise<number | null> => {
+      const records = await this.sortedBoard(ALL_TIME, mode);
+      const index = records.findIndex((record) =>
+        (record.participantIds ?? []).includes(clientId),
+      );
+      return index < 0 ? null : index + 1;
+    };
+
+    return { classic: await placeIn('classic'), duo: await placeIn('duo') };
   }
 
   /**
@@ -663,6 +684,7 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       name: profile.name,
       joinedAt: profile.createdAt,
       stats: statsOf(profile),
+      ranks: await this.allTimePlaces(profile.clientId),
     });
   }
 
@@ -846,7 +868,7 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     // ranking. Both still count toward the profile's lifetime totals.
     const ledger = ranked
       ? await this.rankedWrites(record)
-      : { writes: {} as Record<string, RankedScore>, weeklyBest: false };
+      : { writes: {} as Record<string, RankedScore>, weeklyBest: false, windows: [] as string[] };
 
     profile.coins = safeAdd(profile.coins, reward.totalCoins);
     const finishedAt = Date.now();
@@ -867,6 +889,7 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       [claimKey]: { reward, weeklyBest: ledger.weeklyBest } satisfies StoredClaim,
     };
     await this.ctx.storage.put(writes);
+    this.foldIntoBoards(record, ledger.windows);
     const weeklyBest = ledger.weeklyBest;
 
     await this.count(ranked ? 'classic.ranked' : 'classic.casual');
@@ -918,6 +941,7 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
     // boards. A minute a turn is a different game from five seconds a turn, and
     // one leaderboard cannot hold both honestly.
     let weeklyBest = false;
+    let filed: { record: RankedScore; windows: string[] } | null = null;
     if (input.ranked) {
       const sortedPlayers = [...input.players].sort((a, b) => a.clientId.localeCompare(b.clientId));
       const pairId = sortedPlayers.map((player) => player.clientId).join('+');
@@ -933,10 +957,12 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       const ranked = await this.rankedWrites(record);
       weeklyBest = ranked.weeklyBest;
       Object.assign(writes, ranked.writes);
+      filed = { record, windows: ranked.windows };
     }
 
     writes[claimKey] = { reward, weeklyBest };
     await this.ctx.storage.put(writes);
+    if (filed) this.foldIntoBoards(filed.record, filed.windows);
     await this.count(input.ranked ? 'duo.ranked' : 'duo.casual');
     return ok(true);
   }
@@ -1060,9 +1086,10 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
    */
   private async rankedWrites(
     record: RankedScore,
-  ): Promise<{ writes: Record<string, RankedScore>; weeklyBest: boolean }> {
+  ): Promise<{ writes: Record<string, RankedScore>; weeklyBest: boolean; windows: string[] }> {
     const week = weekWindow(record.achievedAt);
     const writes: Record<string, RankedScore> = {};
+    const windows: string[] = [];
     let weeklyBest = false;
 
     for (const window of [week.key, ALL_TIME]) {
@@ -1070,10 +1097,33 @@ export class ProgressDO extends DurableObject<Record<string, never>> {
       const previous = await this.ctx.storage.get<RankedScore>(key);
       if (!beats(record, previous)) continue;
       writes[key] = record;
+      windows.push(window);
       if (window === week.key) weeklyBest = true;
     }
 
-    return { writes, weeklyBest };
+    return { writes, weeklyBest, windows };
+  }
+
+  /**
+   * Fold a record that has just been filed into any board already in memory.
+   *
+   * The sorted scan is cached for a minute and this object is its only writer,
+   * so keeping what is held in step costs one insert and spares the rescan. It
+   * is also the difference between a player who has just finished a ranked game
+   * reading their real place and reading the board from before they played —
+   * which, on a profile, comes out as having no place at all.
+   */
+  private foldIntoBoards(record: RankedScore, windows: string[]): void {
+    for (const window of windows) {
+      const cached = this.boards.get(`${window}:${record.mode}`);
+      if (!cached) continue;
+      // Replaced rather than mutated: a reader part-way through a board holds
+      // the array it started with, not one changing underneath it.
+      const records = cached.records.filter((held) => held.id !== record.id);
+      records.push(record);
+      records.sort(compareScores);
+      cached.records = records;
+    }
   }
 
   /**

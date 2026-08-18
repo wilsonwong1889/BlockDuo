@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import type {
-  GameMode,
-  LeaderboardScope,
-  LeaderboardView,
+import {
+  ALL_TIME_LEADERBOARD_SIZE,
+  type GameMode,
+  type LeaderboardScope,
+  type LeaderboardView,
 } from '@blokduo/engine';
 import { Leaderboard } from '../components/Leaderboard';
 import { useProgress } from '../progress/ProgressContext';
@@ -226,7 +227,7 @@ export function SocialScreen({ onHome, onPlayer }: Props) {
 
         <Leaderboard
           title="All time"
-          subtitle="Every week that has ever been played"
+          subtitle={`The best ${ALL_TIME_LEADERBOARD_SIZE}, from every week ever played`}
           board={board?.allTime ?? null}
           onPlayer={onPlayer}
           loading={!board && !boardError}
